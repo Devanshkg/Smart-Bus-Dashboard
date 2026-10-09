@@ -30,156 +30,155 @@ const STATUS_META = {
    traffic[i] applies to the segment between stop i and stop i+1. */
 const ROUTES = [
   {
-    id: 1, code: "R1", name: "Yelahanka Route", color: "#0B5FD9",
+    id: 1, code: "R1", name: "Whitefield", color: "#0B5FD9",
     stops: [
-      { n: "Yelahanka New Town", ll: [13.1038, 77.5967] },
-      { n: "Yelahanka Fort", ll: [13.1123, 77.5968] },
-      { n: "Bank Colony", ll: [13.1198, 77.5971] },
-      { n: "Venkatala", ll: [13.1276, 77.5957] },
-      { n: "Avalahalli", ll: [13.1361, 77.5945] },
+      { n: "Whitefield", ll: [12.9698, 77.7499] },
+      { n: "Hope Farm Junction", ll: [12.9780, 77.7520] },
+      { n: "Kadugodi", ll: [12.9990, 77.7600] },
+      { n: "Seegehalli", ll: [13.0220, 77.7740] },
+      { n: "Budigere Cross", ll: [13.0460, 77.7440] },
       { n: "Hunasamaranahalli", ll: [13.1445, 77.5950] },
-      { n: "Bommenahalli", ll: [13.1535, 77.5948] },
       { n: "Jala Hobli Office", ll: [13.1620, 77.5955] },
       { n: "Stonehill School", ll: [13.170998, 77.596295] }
     ],
-    traffic: ["green", "green", "yellow", "yellow", "green", "red", "yellow", "green"],
+    traffic: ["green", "yellow", "green", "red", "yellow", "green", "green"],
     alt: {
-      name: "Hunasamaranahalli Bypass (express)",
+      name: "Whitefield Express (via ORR)",
       stops: [
-        { n: "Yelahanka New Town", ll: [13.1038, 77.5967] },
-        { n: "Bank Colony", ll: [13.1198, 77.5971] },
-        { n: "Hunasamaranahalli Bypass", ll: [13.1455, 77.6025] },
+        { n: "Whitefield", ll: [12.9698, 77.7499] },
+        { n: "Kadugodi", ll: [12.9990, 77.7600] },
+        { n: "Budigere Cross", ll: [13.0460, 77.7440] },
         { n: "Jala Hobli Office", ll: [13.1620, 77.5955] },
-        { n: "Stonehill School", ll: [13.170998, 77.596295] }
-      ],
-      traffic: ["green", "yellow", "green", "green"]
-    }
-  },
-  {
-    id: 2, code: "R2", name: "Jalahalli / Vidyaranyapura Route", color: "#7C3AED",
-    stops: [
-      { n: "Vidyaranyapura Main Road", ll: [13.0733, 77.5470] },
-      { n: "Janapriya Layout", ll: [13.0830, 77.5487] },
-      { n: "Jalahalli Cross", ll: [13.1040, 77.5520] },
-      { n: "HMT Colony", ll: [13.1150, 77.5450] },
-      { n: "Rajiv Nagar", ll: [13.1300, 77.5540] },
-      { n: "Sunkadakatte", ll: [13.1390, 77.5640] },
-      { n: "Ganganagar", ll: [13.1450, 77.5760] },
-      { n: "Bommenahalli", ll: [13.1535, 77.5948] },
-      { n: "Stonehill School", ll: [13.170998, 77.596295] }
-    ],
-    traffic: ["green", "yellow", "red", "yellow", "green", "yellow", "green", "green"],
-    alt: {
-      name: "Sunkadakatte Service Road (express)",
-      stops: [
-        { n: "Vidyaranyapura Main Road", ll: [13.0733, 77.5470] },
-        { n: "Jalahalli Cross", ll: [13.1040, 77.5520] },
-        { n: "Ganganagar", ll: [13.1450, 77.5760] },
-        { n: "Bommenahalli", ll: [13.1535, 77.5948] },
-        { n: "Stonehill School", ll: [13.170998, 77.596295] }
-      ],
-      traffic: ["green", "yellow", "green", "green"]
-    }
-  },
-  {
-    id: 3, code: "R3", name: "Hebbal / Jakkur Route", color: "#DC2626",
-    stops: [
-      { n: "Hebbal Junction", ll: [13.0357, 77.5973] },
-      { n: "Manyata Tech Park", ll: [13.0445, 77.5940] },
-      { n: "Jakkur Cross", ll: [13.0640, 77.5985] },
-      { n: "Rachenahalli", ll: [13.1060, 77.5945] },
-      { n: "Yelahanka Satellite Town", ll: [13.1180, 77.6000] },
-      { n: "Bommenahalli", ll: [13.1535, 77.5948] },
-      { n: "Jala Hobli Office", ll: [13.1620, 77.5955] },
-      { n: "Stonehill School", ll: [13.170998, 77.596295] }
-    ],
-    traffic: ["red", "red", "yellow", "red", "yellow", "green", "green"],
-    alt: {
-      name: "Outer Ring Road North (bypass)",
-      stops: [
-        { n: "Hebbal Junction", ll: [13.0357, 77.5973] },
-        { n: "Manyata Tech Park", ll: [13.0445, 77.5940] },
-        { n: "ORR North", ll: [13.0745, 77.6145] },
-        { n: "Sahakaranagar", ll: [13.0955, 77.6095] },
-        { n: "Yelahanka Satellite Town", ll: [13.1180, 77.6000] },
-        { n: "Bommenahalli", ll: [13.1535, 77.5948] },
-        { n: "Stonehill School", ll: [13.170998, 77.596295] }
-      ],
-      traffic: ["yellow", "green", "green", "green", "yellow", "green"]
-    }
-  },
-  {
-    id: 4, code: "R4", name: "Hennur / Thanisandra Route", color: "#0D9488",
-    stops: [
-      { n: "Hennur Cross", ll: [13.0410, 77.6410] },
-      { n: "Hennur Bande", ll: [13.0560, 77.6440] },
-      { n: "Kothanur", ll: [13.0740, 77.6480] },
-      { n: "Kanaka Layout", ll: [13.0900, 77.6370] },
-      { n: "Thanisandra Main Road", ll: [13.1060, 77.6290] },
-      { n: "Nagawara Circle", ll: [13.1215, 77.6305] },
-      { n: "Bommenahalli", ll: [13.1535, 77.5948] },
-      { n: "Stonehill School", ll: [13.170998, 77.596295] }
-    ],
-    traffic: ["yellow", "red", "yellow", "green", "yellow", "red", "yellow"],
-    alt: {
-      name: "Thanisandra Link Road (express)",
-      stops: [
-        { n: "Hennur Cross", ll: [13.0410, 77.6410] },
-        { n: "Thanisandra Main Road", ll: [13.1060, 77.6290] },
-        { n: "Thanisandra Link", ll: [13.1400, 77.6250] },
-        { n: "Bommenahalli", ll: [13.1535, 77.5948] },
-        { n: "Stonehill School", ll: [13.170998, 77.596295] }
-      ],
-      traffic: ["green", "green", "yellow", "green"]
-    }
-  },
-  {
-    id: 5, code: "R5", name: "Doddaballapur Road Route", color: "#EA580C",
-    stops: [
-      { n: "Chikkabidarakallu", ll: [13.2350, 77.5720] },
-      { n: "Gantiganahalli", ll: [13.2180, 77.5830] },
-      { n: "Hosahalli Gate", ll: [13.2100, 77.5885] },
-      { n: "M. S. Palya", ll: [13.1975, 77.5910] },
-      { n: "Tarahunise Cross", ll: [13.1665, 77.5960] },
-      { n: "Stonehill School", ll: [13.170998, 77.596295] }
-    ],
-    traffic: ["green", "yellow", "yellow", "red", "green"],
-    alt: {
-      name: "NH-48 Service Road (express)",
-      stops: [
-        { n: "Chikkabidarakallu", ll: [13.2350, 77.5720] },
-        { n: "NH-48 Service Road", ll: [13.2050, 77.5955] },
-        { n: "M. S. Palya", ll: [13.1975, 77.5910] },
-        { n: "Tarahunise Cross", ll: [13.1665, 77.5960] },
         { n: "Stonehill School", ll: [13.170998, 77.596295] }
       ],
       traffic: ["green", "green", "green", "green"]
     }
   },
   {
-    id: 6, code: "R6", name: "Bagalur / Budigere Route", color: "#DB2777",
+    id: 2, code: "R2", name: "Sarjapur Road", color: "#7C3AED",
     stops: [
-      { n: "Budigere Cross", ll: [13.2270, 77.6160] },
-      { n: "Budigere Village", ll: [13.2100, 77.6100] },
-      { n: "Bagalur Cross", ll: [13.2000, 77.6060] },
-      { n: "Jala Village", ll: [13.1900, 77.5995] },
-      { n: "Tarahunise Cross", ll: [13.1680, 77.5950] },
+      { n: "Sarjapur Road", ll: [12.9063, 77.6822] },
+      { n: "Kaikondrahalli", ll: [12.9140, 77.6800] },
+      { n: "Bellandur", ll: [12.9260, 77.6760] },
+      { n: "Devarabisanahalli", ll: [12.9310, 77.6780] },
+      { n: "Marathahalli Bridge", ll: [12.9550, 77.6980] },
+      { n: "KR Puram", ll: [12.9716, 77.5946] },
+      { n: "Bommenahalli", ll: [13.1535, 77.5948] },
       { n: "Stonehill School", ll: [13.170998, 77.596295] }
     ],
-    traffic: ["yellow", "green", "yellow", "yellow", "green"],
+    traffic: ["green", "green", "yellow", "yellow", "red", "yellow", "green"],
     alt: {
-      name: "Bagalur Outer Link (express)",
+      name: "Sarjapur Express (via SH 35)",
       stops: [
-        { n: "Budigere Cross", ll: [13.2270, 77.6160] },
-        { n: "Bagalur Outer Link", ll: [13.1985, 77.6115] },
-        { n: "Jala Village", ll: [13.1900, 77.5995] },
-        { n: "Tarahunise Cross", ll: [13.1680, 77.5950] },
+        { n: "Sarjapur Road", ll: [12.9063, 77.6822] },
+        { n: "Bellandur", ll: [12.9260, 77.6760] },
+        { n: "Marathahalli Bridge", ll: [12.9550, 77.6980] },
+        { n: "Bommenahalli", ll: [13.1535, 77.5948] },
         { n: "Stonehill School", ll: [13.170998, 77.596295] }
       ],
-      traffic: ["green", "yellow", "green", "green"]
+      traffic: ["green", "yellow", "yellow", "green"]
+    }
+  },
+  {
+    id: 3, code: "R3", name: "Marathahalli", color: "#DC2626",
+    stops: [
+      { n: "Marathahalli", ll: [12.9562, 77.7019] },
+      { n: "Brookefield", ll: [12.9660, 77.7160] },
+      { n: "Varthur", ll: [12.9390, 77.7350] },
+      { n: "Whitefield Main Road", ll: [12.9698, 77.7499] },
+      { n: "ITPL", ll: [12.9790, 77.7100] },
+      { n: "KR Puram", ll: [12.9716, 77.5946] },
+      { n: "Bommenahalli", ll: [13.1535, 77.5948] },
+      { n: "Stonehill School", ll: [13.170998, 77.596295] }
+    ],
+    traffic: ["red", "red", "yellow", "yellow", "green", "yellow", "green"],
+    alt: {
+      name: "Marathahalli Bypass",
+      stops: [
+        { n: "Marathahalli", ll: [12.9562, 77.7019] },
+        { n: "Brookefield", ll: [12.9660, 77.7160] },
+        { n: "Bommenahalli", ll: [13.1535, 77.5948] },
+        { n: "Stonehill School", ll: [13.170998, 77.596295] }
+      ],
+      traffic: ["red", "yellow", "green"]
+    }
+  },
+  {
+    id: 4, code: "R4", name: "Indiranagar", color: "#0D9488",
+    stops: [
+      { n: "Indiranagar", ll: [12.9719, 77.6412] },
+      { n: "CMH Road", ll: [12.9780, 77.6380] },
+      { n: "Domlur", ll: [12.9620, 77.6380] },
+      { n: "HAL Airport Road", ll: [12.9510, 77.6680] },
+      { n: "Marathahalli", ll: [12.9562, 77.7019] },
+      { n: "Bommenahalli", ll: [13.1535, 77.5948] },
+      { n: "Jala Hobli Office", ll: [13.1620, 77.5955] },
+      { n: "Stonehill School", ll: [13.170998, 77.596295] }
+    ],
+    traffic: ["green", "yellow", "yellow", "red", "yellow", "green", "green"],
+    alt: {
+      name: "Indiranagar Inner Ring Road",
+      stops: [
+        { n: "Indiranagar", ll: [12.9719, 77.6412] },
+        { n: "Domlur", ll: [12.9620, 77.6380] },
+        { n: "Bommenahalli", ll: [13.1535, 77.5948] },
+        { n: "Stonehill School", ll: [13.170998, 77.596295] }
+      ],
+      traffic: ["green", "green", "green"]
+    }
+  },
+  {
+    id: 5, code: "R5", name: "KR Puram", color: "#EA580C",
+    stops: [
+      { n: "KR Puram", ll: [12.9716, 77.5946] },
+      { n: "Mahadevapura", ll: [12.9910, 77.6860] },
+      { n: "Benniganahalli", ll: [12.9950, 77.6610] },
+      { n: "OAR Junction", ll: [13.0110, 77.5540] },
+      { n: "Nagavara", ll: [13.0430, 77.6260] },
+      { n: "Hennur Cross", ll: [13.0400, 77.6550] },
+      { n: "Bommenahalli", ll: [13.1535, 77.5948] },
+      { n: "Stonehill School", ll: [13.170998, 77.596295] }
+    ],
+    traffic: ["green", "yellow", "yellow", "red", "yellow", "green", "green"],
+    alt: {
+      name: "KR Puram ORR Bypass",
+      stops: [
+        { n: "KR Puram", ll: [12.9716, 77.5946] },
+        { n: "Mahadevapura", ll: [12.9910, 77.6860] },
+        { n: "Bommenahalli", ll: [13.1535, 77.5948] },
+        { n: "Stonehill School", ll: [13.170998, 77.596295] }
+      ],
+      traffic: ["green", "yellow", "green"]
+    }
+  },
+  {
+    id: 6, code: "R6", name: "Electronic City", color: "#DB2777",
+    stops: [
+      { n: "Electronic City Phase 1", ll: [12.8440, 77.6600] },
+      { n: "Electronic City Phase 2", ll: [12.8300, 77.6900] },
+      { n: "Silk Board", ll: [12.9177, 77.6227] },
+      { n: "BTM Layout", ll: [12.9166, 77.6101] },
+      { n: "Koramangala", ll: [12.9352, 77.6245] },
+      { n: "Domlur", ll: [12.9620, 77.6380] },
+      { n: "Bommenahalli", ll: [13.1535, 77.5948] },
+      { n: "Stonehill School", ll: [13.170998, 77.596295] }
+    ],
+    traffic: ["green", "yellow", "red", "yellow", "yellow", "green", "green"],
+    alt: {
+      name: "Electronic City Express",
+      stops: [
+        { n: "Electronic City Phase 1", ll: [12.8440, 77.6600] },
+        { n: "Silk Board", ll: [12.9177, 77.6227] },
+        { n: "Koramangala", ll: [12.9352, 77.6245] },
+        { n: "Bommenahalli", ll: [13.1535, 77.5948] },
+        { n: "Stonehill School", ll: [13.170998, 77.596295] }
+      ],
+      traffic: ["green", "yellow", "yellow", "green"]
     }
   }
 ];
+
+
 
 /* students: "Name|Class|stopIndex"  — "|absent" suffix seeds an absent student */
 const BUSES = [
