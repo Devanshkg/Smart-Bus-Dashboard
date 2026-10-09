@@ -511,8 +511,17 @@ function renderRouteOpt() {
   const route = getRoute(bus.routeId);
   const ar = getActiveRoute(route);
   const usingAlt = state.usingAlt.has(route.id);
+  const rtTime = routeTime(route, usingAlt);
+  const plTime = routeTime(route, false);
   if (routeNameEl) routeNameEl.textContent = (usingAlt && route.alt ? route.alt.name : ar.name);
-  if (routeTravelHintEl) routeTravelHintEl.textContent = ar.stops.length + ' stops · ' + Math.round(routeTime(route, usingAlt)) + ' min est.';
+  if (routeTravelHintEl) routeTravelHintEl.textContent = ar.stops.length + ' stops · ' + Math.round(rtTime) + ' min est.';
+  const rtPlanned = document.getElementById('routePlanned');
+  const rtTraffic = document.getElementById('routeTrafficTime');
+  const rtNextEta = document.getElementById('routeNextEta');
+  if (rtPlanned) rtPlanned.textContent = Math.round(plTime) + ' min';
+  if (rtTraffic) rtTraffic.textContent = Math.round(rtTime) + ' min';
+  const nextEta = estimateEtaMins(bus, route);
+  if (rtNextEta) rtNextEta.textContent = formatEta(nextEta);
   if (routeStopsEl) {
     routeStopsEl.innerHTML = ar.stops.map((s, i) => `<div class="stop-pill">${i+1}. ${s.n}</div>`).join('');
   }
