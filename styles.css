@@ -3,7 +3,7 @@
   --blue: #0b5fd9;
   --blue-dark: #083f8f;
   --blue-soft: #e8f0fd;
-  --bg: #eef2f8;
+  --bg: #f1f4f9;
   --panel: #ffffff;
   --text: #0f1b2d;
   --muted: #5d6b82;
@@ -36,7 +36,8 @@ a { color: var(--blue); }
   align-items: center;
   gap: 20px;
   padding: 14px 22px;
-  background: linear-gradient(100deg, #072f70 0%, var(--blue) 62%, #1f74ec 100%);
+  background: #0c1a33;
+  border-bottom: 3px solid var(--blue);
   color: #fff;
   box-shadow: var(--shadow);
   position: sticky;
@@ -107,6 +108,8 @@ a { color: var(--blue); }
 }
 .content { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .sidebar { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.panels > * { min-width: 0; }
+.panel { min-width: 0; }
 
 .panel {
   background: var(--panel);
@@ -148,6 +151,7 @@ a { color: var(--blue); }
 .bi-top strong { font-size: 16.5px; font-weight: 800; }
 .bi-eta { font-size: 13.5px; font-weight: 800; color: var(--blue); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .bi-sub { font-size: 12.8px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bi-sub b { font-weight: 800; }
 .bi-stop { font-size: 12.8px; color: var(--text); margin-top: 3px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bi-stop span { color: var(--muted); font-weight: 500; }
 
@@ -223,14 +227,14 @@ a { color: var(--blue); }
 /* ---------- Bottom panels ---------- */
 .panels {
   display: grid;
-  grid-template-columns: 1fr 1.05fr 1.25fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr) minmax(0, 1.25fr);
   gap: 14px;
   align-items: start;
 }
 
 /* Details */
 .details-grid {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 9px 12px;
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 12px;
 }
 .dg-item { background: #f7f9fc; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; min-width: 0; }
 .dg-item.wide { grid-column: 1 / -1; }
@@ -238,6 +242,8 @@ a { color: var(--blue); }
 .dg-value { font-size: 15.5px; font-weight: 700; margin-top: 3px; word-break: break-word; }
 .dg-value .sub { display: block; font-size: 12.5px; font-weight: 600; color: var(--muted); margin-top: 2px; }
 .dg-value .num { font-variant-numeric: tabular-nums; }
+.dg-value .dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; margin-right: 6px; vertical-align: middle; }
+.muted { color: var(--muted); }
 
 .traffic-pill { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; }
 .traffic-pill i { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
@@ -249,7 +255,7 @@ a { color: var(--blue); }
 
 /* Route panel */
 .route-name { font-size: 16.5px; font-weight: 800; margin-bottom: 9px; }
-.route-times { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 11px; }
+.route-times { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 11px; }
 .rt { background: #f7f9fc; border: 1px solid var(--line); border-radius: 10px; padding: 7px 9px; }
 .rt-label { display: block; font-size: 11.3px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); font-weight: 700; }
 .rt-value { display: block; font-size: 17px; font-weight: 800; margin-top: 2px; font-variant-numeric: tabular-nums; }
@@ -390,21 +396,21 @@ a { color: var(--blue); }
 
 /* ---------- Responsive ---------- */
 @media (max-width: 1400px) {
-  .panels { grid-template-columns: 1fr 1fr; }
+  .panels { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   #attendancePanel { grid-column: 1 / -1; }
 }
 @media (max-width: 1180px) {
-  .layout { grid-template-columns: 1fr; }
+  .layout { grid-template-columns: minmax(0, 1fr); }
   .sidebar { flex-direction: row; }
   .sidebar .panel { flex: 1; }
-  .summary { grid-template-columns: repeat(3, 1fr); }
+  .summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 860px) {
   .brand-text h1 { font-size: 20px; }
   #clockTime { font-size: 22px; }
-  .summary { grid-template-columns: repeat(2, 1fr); }
+  .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .sidebar { flex-direction: column; }
-  .panels { grid-template-columns: 1fr; }
+  .panels { grid-template-columns: minmax(0, 1fr); }
   #attendancePanel { grid-column: auto; }
   .layout, .summary, .topbar { padding-left: 12px; padding-right: 12px; }
   .legend { display: none; }

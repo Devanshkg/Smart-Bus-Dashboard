@@ -5,9 +5,10 @@ const state = {
   selectedBusId: null,
   selectedRouteId: null,
   usingAlt: new Set(), // routeIds using alternative route
+  dismissedSugg: new Set(), // routeIds whose suggestion was dismissed
   tick: 0,
   startedAt: Date.now(),
-  alerts: SEED_ALERTS.slice()
+  alerts: SEED_ALERTS.map(a => ({ ...a, ts: Date.now() }))
 };
 
 const mapEl = document.getElementById('map');
@@ -39,13 +40,19 @@ const studentSearchEl = document.getElementById('studentSearch');
 const statusFilterEl = document.getElementById('statusFilter');
 const legendEl = document.getElementById('legend');
 const legendToggleEl = document.getElementById('legendToggle');
+const attBusSelectEl = document.getElementById('attBusSelect');
+const attPresentEl = document.getElementById('attPresent');
+const attAbsentEl = document.getElementById('attAbsent');
+const attExpectedEl = document.getElementById('attExpected');
 
 let leafletMap = null;
-const routeLines = {};
-const altRouteLines = {};
-const busMarkers = {};
-const stopMarkers = {};
-const chart = null;
+let routeLines = {};
+let altRouteLines = {};
+let busMarkers = {};
+let stopMarkers = {};
+let dirMarkers = {};
+let schoolMarker = null;
+let chart = null;
 
 function initClock() {
   updateClock();
@@ -90,19 +97,33 @@ function distanceMeters(a, b) {
 }
 
 function interpolateAlongPolyline(lls, t) {
-  // clamp
-  let tt = Math.max(0, Math.min(1, t));
+  const tt = Math.max(0, Math.min(1, t));
+  if (lls.length < 2) return { point: lls[0], segIndex: 0, segT: 0 };
+  const segLens = [];
+  const dists = [0];
+  let total = 0;
+  for (let i = 1; i < lls.length; i++) {
+    const d = distanceMeters(lls[i - 1], lls[i]);
+    segLens.push(d);
+    total += d;
+    dists.push(total);
+  }
+  if (total <= 0) return { point: lls[0], segIndex: 0, segT: 0 };
   if (tt <= 0) return { point: lls[0], segIndex: 0, segT: 0 };
-  if (tt >= 1) return { point: lls[lls.length - 1], segIndex: Math.max(0, lls.length - 2), segT: 1 };
-  const totalSegs = lls.length - 1;
-  const idx = Math.floor(tt * totalSegs);
-  const segT2 = (tt * totalSegs) - idx;
+  if (tt >= 1) return { point: lls[lls.length - 1], segIndex: segLens.length - 1, segT: 1 };
+  const target = tt * total;
+  let idx = 0;
+  for (let i = 1; i < dists.length; i++) {
+    if (target <= dists[i]) { idx = i - 1; break; }
+  }
+  const segLen = segLens[idx];
+  const segT = segLen === 0 ? 0 : (target - dists[idx]) / segLen;
   const p0 = lls[idx], p1 = lls[idx + 1];
-  const point = [
-    p0[0] + (p1[0] - p0[0]) * segT2,
-    p0[1] + (p1[1] - p0[1]) * segT2
-  ];
-  return { point, segIndex: idx, segT: segT2 };
+  return {
+    point: [p0[0] + (p1[0] - p0[0]) * segT, p0[1] + (p1[1] - p0[1]) * segT],
+    segIndex: idx,
+    segT
+  };
 }
 
 function getTrafficColor(route, segIndex) {
@@ -139,7 +160,7 @@ function statusFromBus(bus, route) {
   const d = bus.delay || 0;
   const prog = bus.progress || 0;
   if (prog >= 0.98) return 'arrived';
-  if (d >= 8) return 'delayed';
+  if (d >= 6) return 'delayed';
   if (d >= 3 || prog >= 0.8) return 'arriving';
   return 'ontime';
 }
@@ -153,18 +174,17 @@ function renderBusList() {
     const active = state.selectedBusId === bus.id;
     const card = document.createElement('button');
     card.type = 'button';
-    card.className = 'bus-card' + (active ? ' active' : '');
+    card.className = 'bus-item' + (active ? ' selected' : '');
     const etaMins = estimateEtaMins(bus, route);
+    const ar = getActiveRoute(route);
+    const nextStop = ar.stops[nextStopIndex(bus, route)] || ar.stops[ar.stops.length - 1];
     card.innerHTML = `
-      <div class="bus-meta">
-        <div class="bus-name">${bus.name}</div>
-        <div class="bus-driver">${bus.driver}</div>
+      <span class="dot" style="background:${meta.color}"></span>
+      <div class="bi-main">
+        <div class="bi-top"><strong>${bus.name}</strong><span class="bi-eta">${formatEta(etaMins)}</span></div>
+        <div class="bi-sub">${bus.driver} · <b style="color:${meta.color}">${meta.label}</b></div>
+        <div class="bi-stop"><span>Next:</span> ${nextStop.n}</div>
       </div>
-      <div class="bus-status">
-        <span class="dot" style="background:${meta.color}"></span>
-        <span>${meta.label}</span>
-      </div>
-      <span class="eta-badge">${formatEta(etaMins)}</span>
     `;
     card.addEventListener('click', () => selectBus(bus.id));
     busListEl.appendChild(card);
@@ -208,14 +228,16 @@ function renderRouteChips() {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'chip' + (state.selectedRouteId === r.id ? ' active' : '');
-    chip.textContent = r.code + ' · ' + r.name;
+    chip.innerHTML = `<span class="dot" style="background:${r.color}"></span>${r.code} · ${r.name}`;
     chip.addEventListener('click', () => {
-      state.selectedRouteId = r.id;
-      const b = getBus(state.selectedBusId);
-      if (b && b.routeId !== r.id) selectBus(b.id); // keep context
-      renderRouteChips();
-      drawMap();
-      renderRouteOpt();
+      const b = BUSES.find(x => x.routeId === r.id);
+      if (b) selectBus(b.id);
+      else {
+        state.selectedRouteId = r.id;
+        renderRouteChips();
+        drawMap();
+        renderRouteOpt();
+      }
     });
     routeChipsEl.appendChild(chip);
   });
@@ -229,18 +251,32 @@ function drawMap() {
       subdomains: 'abcd',
       maxZoom: 18
     }).addTo(leafletMap);
+    schoolMarker = L.marker(llToLatLng(SCHOOL.ll), {
+      interactive: false,
+      icon: L.divIcon({
+        className: 'school-wrap',
+        html: '<div class="school-icon">🏫</div>',
+        iconSize: [38, 38],
+        iconAnchor: [19, 19]
+      })
+    }).addTo(leafletMap);
+    schoolMarker.bindTooltip(SCHOOL.short, {
+      className: 'school-label', direction: 'top', offset: [0, -22], permanent: true
+    });
   }
 
   // clear existing
-  Object.values(routeLines).forEach(l => l.remove());
-  Object.values(altRouteLines).forEach(l => l.remove());
+  Object.values(routeLines).forEach(ls => ls.forEach(l => l.remove()));
+  Object.values(altRouteLines).forEach(ls => ls.forEach(l => l.remove()));
   Object.values(stopMarkers).forEach(m => m.remove());
   Object.values(busMarkers).forEach(m => m.remove());
+  Object.values(dirMarkers).forEach(m => m.remove());
 
   routeLines = {};
   altRouteLines = {};
   stopMarkers = {};
   busMarkers = {};
+  dirMarkers = {};
 
   ROUTES.forEach(r => {
     const ar = getActiveRoute(r);
@@ -261,6 +297,7 @@ function drawMap() {
 
     // draw stops for selected route
     if (state.selectedRouteId === r.id) {
+      const routeBus = BUSES.find(b => b.routeId === r.id);
       ar.stops.forEach((s, idx) => {
         const m = L.circleMarker(llToLatLng(s.ll), {
           radius: 5,
@@ -269,20 +306,27 @@ function drawMap() {
           fillColor: '#f8fafc',
           fillOpacity: 1
         }).addTo(leafletMap);
-        m.bindPopup('<b>' + s.n + '</b><br/>Stop ' + (idx + 1) + '/' + ar.stops.length);
+        const boarding = stopBoardingCount(r.id, idx);
+        const eta = routeBus ? estimateStopEta(routeBus, r, idx) : null;
+        const etaLine = eta === null ? '' :
+          `<div class="pop-row"><span>Bus ETA</span><b>${(routeBus.progress || 0) >= stopProgressForStop(ar, idx) - 0.01 ? 'passed' : formatEta(eta)}</b></div>`;
+        m.bindPopup(`
+          <div class="pop-title">${s.n}</div>
+          <div class="pop-row"><span>Stop</span><b>${idx + 1} / ${ar.stops.length}</b></div>
+          <div class="pop-row"><span>Boarding</span><b>${boarding} student${boarding === 1 ? '' : 's'}</b></div>
+          ${etaLine}
+        `);
         stopMarkers[idx] = m;
       });
     }
 
-    // alt if exists and maybe suggest? draw thin dashed if suggested
-    if (r.alt) {
+    // dashed alternate only while a suggestion is active for this route
+    if (r.alt && r.id === state.selectedRouteId && hasHeavyTraffic(r) &&
+        !state.usingAlt.has(r.id) && !state.dismissedSugg.has(r.id)) {
       const alls = r.alt.stops.map(s => llToLatLng(s.ll));
       for (let i = 0; i < alls.length - 1; i++) {
         const seg = [alls[i], alls[i + 1]];
-        const color = '#94a3b8';
-        const weight = 4;
-        const op = 0.6;
-        const line = L.polyline(seg, { color, weight, opacity: op, dashArray: '6 6' });
+        const line = L.polyline(seg, { color: '#64748b', weight: 4, opacity: 0.75, dashArray: '6 6' });
         line.addTo(leafletMap);
         if (!altRouteLines[r.id]) altRouteLines[r.id] = [];
         altRouteLines[r.id].push(line);
@@ -300,18 +344,42 @@ function drawMap() {
     const status = statusFromBus(bus, route);
     const meta = STATUS_META[status] || STATUS_META.ontime;
     const selected = state.selectedBusId === bus.id;
+    const num = bus.name.replace('Bus ', '');
     const marker = L.marker(p, {
       icon: L.divIcon({
         className: 'bus-marker',
-        html: `<div class="bm" style="--c:${meta.color};${selected ? 'box-shadow:0 0 0 6px rgba(11,95,217,.25)' : ''}">${bus.name.replace('Bus ', '')}</div>`,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16]
+        html: `
+          <div class="bus-icon${selected ? ' selected' : ''}">
+            <div class="bus-pin ${status}">${num}</div>
+            ${selected ? `<div class="bus-num">${bus.name}</div>` : ''}
+          </div>
+        `,
+        iconSize: [36, 36],
+        iconAnchor: [18, 18]
       })
     }).addTo(leafletMap);
     const eta = formatEta(estimateEtaMins(bus, route));
-    marker.bindTooltip(bus.name + ' · ' + eta + ' · ' + meta.label);
+    const nextStop = getActiveRoute(route).stops[nextStopIndex(bus, route)];
+    marker.bindTooltip(`${bus.name} · ${eta} · ${meta.label} · next: ${nextStop.n}`, {
+      className: 'bus-tip' + (selected ? ' selected' : ''),
+      direction: 'top',
+      offset: [0, -22]
+    });
     marker.on('click', () => selectBus(bus.id));
     busMarkers[bus.id] = marker;
+
+    // direction indicator toward school
+    const brg = bearingDeg(interp.point, SCHOOL.ll);
+    dirMarkers[bus.id] = L.marker(p, {
+      interactive: false,
+      zIndexOffset: 500,
+      icon: L.divIcon({
+        className: 'dir-marker',
+        html: `<div class="dir-arrow" style="transform:rotate(${brg.toFixed(1)}deg)">▲</div>`,
+        iconSize: [18, 18],
+        iconAnchor: [9, -16]
+      })
+    }).addTo(leafletMap);
   });
 
   // fit if nothing selected
@@ -335,6 +403,9 @@ function selectBus(busId) {
   renderBusDetails();
   renderRouteOpt();
   renderRoster();
+  updateAttendance();
+  updateCharts();
+  updateSummary();
   drawMap();
   // fly to
   const m = busMarkers[busId];
@@ -360,50 +431,23 @@ function renderBusDetails() {
   const totalStudents = (bus.students || []).length;
   const present = countPresentOnBus(bus, route);
   const capPct = Math.min(100, Math.round((present / bus.capacity) * 100));
+  const traffic = trafficLevelOfBus(bus, route);
+  const trafficColor = traffic === 'Heavy' ? TRAFFIC_META.red.color
+    : traffic === 'Moderate' ? TRAFFIC_META.yellow.color : TRAFFIC_META.green.color;
+  const nearName = nearestStopName(ar, bus);
 
   busDetailsEl.innerHTML = `
-    <div class="detail-grid">
-      <div>
-        <div class="label">Bus</div>
-        <div class="value">${bus.name}</div>
-      </div>
-      <div>
-        <div class="label">Status</div>
-        <div class="value"><span class="dot" style="background:${meta.color}"></span>${meta.label}</div>
-      </div>
-      <div>
-        <div class="label">Driver</div>
-        <div class="value">${bus.driver}</div>
-      </div>
-      <div>
-        <div class="label">Phone</div>
-        <div class="value">${bus.phone}</div>
-      </div>
-      <div>
-        <div class="label">Route</div>
-        <div class="value">${ar.name}</div>
-      </div>
-      <div>
-        <div class="label">Traffic Level</div>
-        <div class="value">${trafficLevelOfBus(bus, route)}</div>
-      </div>
-      <div>
-        <div class="label">Next Stop</div>
-        <div class="value">${nextStop.n}</div>
-      </div>
-      <div>
-        <div class="label">ETA</div>
-        <div class="value">${formatEta(eta)}</div>
-      </div>
-      <div>
-        <div class="label">Students</div>
-        <div class="value">${present} / ${totalStudents} present</div>
-      </div>
-      <div>
-        <div class="label">Capacity</div>
-        <div class="value">${capPct}% of ${bus.capacity}</div>
-      </div>
-    </div>
+    <div class="dg-item"><div class="dg-label">Bus</div><div class="dg-value">${bus.name}</div></div>
+    <div class="dg-item"><div class="dg-label">Status</div><div class="dg-value"><span class="dot" style="background:${meta.color}"></span>${meta.label}</div></div>
+    <div class="dg-item"><div class="dg-label">Driver</div><div class="dg-value">${bus.driver}</div></div>
+    <div class="dg-item"><div class="dg-label">Phone</div><div class="dg-value num">${bus.phone}</div></div>
+    <div class="dg-item"><div class="dg-label">Route</div><div class="dg-value">${ar.name}</div></div>
+    <div class="dg-item"><div class="dg-label">Traffic Level</div><div class="dg-value"><span class="traffic-pill" style="color:${trafficColor}"><i style="background:${trafficColor}"></i>${traffic}</span></div></div>
+    <div class="dg-item"><div class="dg-label">Next Stop</div><div class="dg-value">${nextStop.n}</div></div>
+    <div class="dg-item"><div class="dg-label">ETA</div><div class="dg-value num">${formatEta(eta)}</div></div>
+    <div class="dg-item"><div class="dg-label">Students</div><div class="dg-value num">${present} / ${totalStudents} present</div></div>
+    <div class="dg-item"><div class="dg-label">Capacity</div><div class="dg-value num">${capPct}% of ${bus.capacity}</div></div>
+    <div class="dg-item wide"><div class="dg-label">Current location</div><div class="dg-value">Near ${nearName}<span class="sub">${ar.name} route · ${Math.round(bus.progress * 100)}% of the way to school</span></div></div>
   `;
   if (detailsStatusBadgeEl) {
     detailsStatusBadgeEl.textContent = meta.label;
@@ -463,34 +507,111 @@ function trafficLevelOfBus(bus, route) {
   return 'Clear';
 }
 
+function nearestStopName(activeRoute, bus) {
+  const lls = activeRoute.stops.map(s => s.ll);
+  const interp = interpolateAlongPolyline(lls, bus.progress || 0);
+  let best = 0, bestD = Infinity;
+  activeRoute.stops.forEach((s, i) => {
+    const d = distanceMeters(s.ll, interp.point);
+    if (d < bestD) { bestD = d; best = i; }
+  });
+  return activeRoute.stops[best].n;
+}
+
+function bearingDeg(from, to) {
+  const p1 = (from[0] * Math.PI) / 180;
+  const p2 = (to[0] * Math.PI) / 180;
+  const dl = ((to[1] - from[1]) * Math.PI) / 180;
+  const y = Math.sin(dl) * Math.cos(p2);
+  const x = Math.cos(p1) * Math.sin(p2) - Math.sin(p1) * Math.cos(p2) * Math.cos(dl);
+  return (Math.atan2(y, x) * 180) / Math.PI;
+}
+
+function estimateStopEta(bus, route, stopIdx) {
+  if (!bus) return null;
+  const ar = getActiveRoute(route);
+  const lls = ar.stops.map(s => s.ll);
+  const total = polylineLength(lls);
+  if (total <= 0) return 0;
+  const stopProg = stopProgressForStop(ar, stopIdx);
+  if (stopProg <= (bus.progress || 0)) return 0;
+  const interp = interpolateAlongPolyline(lls, bus.progress || 0);
+  const tcol = (ar.traffic && ar.traffic[interp.segIndex]) || 'green';
+  const v = tcol === 'red' ? TRAFFIC_SPEED.red
+    : tcol === 'yellow' ? TRAFFIC_SPEED.yellow : TRAFFIC_SPEED.green;
+  const rem = (stopProg - (bus.progress || 0)) * total;
+  return rem / v / 60 + (bus.delay || 0);
+}
+
+function stopBoardingCount(routeId, stopIdx) {
+  let c = 0;
+  BUSES.filter(b => b.routeId === routeId).forEach(b => {
+    (b.students || []).forEach(s => {
+      if (s.includes('|absent')) return;
+      if (parseInt(s.split('|')[2] || '0', 10) === stopIdx) c++;
+    });
+  });
+  return c;
+}
+
+function attendanceCounts(bus) {
+  let present = 0, absent = 0;
+  const route = getRoute(bus.routeId);
+  const ar = getActiveRoute(route);
+  (bus.students || []).forEach(s => {
+    if (s.includes('|absent')) { absent++; return; }
+    const stopIdx = parseInt(s.split('|')[2] || '0', 10);
+    if ((bus.progress || 0) >= stopProgressForStop(ar, stopIdx)) present++;
+  });
+  const total = (bus.students || []).length;
+  return { present, absent, expected: Math.max(0, total - present - absent), total };
+}
+
 function updateSummary() {
   statTotal.textContent = BUSES.length;
-  let ontime = 0, delayed = 0, present = 0, heavy = 0;
+  let ontime = 0, delayed = 0, present = 0;
   BUSES.forEach(b => {
     const r = getRoute(b.routeId);
     const st = statusFromBus(b, r);
-    if (st === 'ontime' || st === 'arriving' || st === 'arrived') {
-      // better split: arriving counts differently? plan says on time/ delayed/ arriving; summary has On Time, Delayed
-    }
-    if (st === 'ontime' || st === 'arriving') ontime++; // arriving treated as not delayed for summary? "Buses On Time" vs "Delayed" - arriving blue
+    if (st === 'ontime' || st === 'arrived') ontime++;
     if (st === 'delayed') delayed++;
-    if (st === 'arrived') ontime++;
     present += countPresentOnBus(b);
-    if (trafficLevelOfBus(b, r) === 'Heavy') heavy++;
   });
+  const heavy = ROUTES.filter(hasHeavyTraffic).length;
   statOnTime.textContent = ontime;
   statDelayed.textContent = delayed;
   statPresent.textContent = present;
   statTraffic.textContent = heavy;
 }
 
+function fmtTs(ts) {
+  return new Intl.DateTimeFormat('en-GB', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit'
+  }).format(new Date(ts));
+}
+
+function pushAlert(type, text) {
+  state.alerts.unshift({ type, text, ts: Date.now() });
+  if (state.alerts.length > 8) state.alerts = state.alerts.slice(0, 8);
+  renderAlerts();
+}
+
 function renderAlerts() {
+  if (!state.alerts.length) {
+    alertListEl.innerHTML = '<div class="alert-empty">No active alerts — all clear.</div>';
+    alertCount.textContent = '0';
+    return;
+  }
   alertListEl.innerHTML = '';
   state.alerts.forEach((a, idx) => {
     const el = document.createElement('div');
-    el.className = 'alert-item ' + (a.type || 'info');
-    el.innerHTML = `<div>${a.text}</div><button class="alert-close" aria-label="Dismiss">×</button>`;
-    el.querySelector('.alert-close').addEventListener('click', () => {
+    el.className = 'alert ' + (a.type || 'info');
+    el.innerHTML = `
+      <div>${a.text}</div>
+      <time>${fmtTs(a.ts || state.startedAt)}</time>
+      <button class="x" aria-label="Dismiss">×</button>
+    `;
+    el.querySelector('.x').addEventListener('click', () => {
       state.alerts.splice(idx, 1);
       renderAlerts();
     });
@@ -523,18 +644,29 @@ function renderRouteOpt() {
   const nextEta = estimateEtaMins(bus, route);
   if (rtNextEta) rtNextEta.textContent = formatEta(nextEta);
   if (routeStopsEl) {
-    routeStopsEl.innerHTML = ar.stops.map((s, i) => `<div class="stop-pill">${i+1}. ${s.n}</div>`).join('');
+    const nextIdx = nextStopIndex(bus, route);
+    routeStopsEl.innerHTML = ar.stops.map((s, i) => {
+      const stopProg = stopProgressForStop(ar, i);
+      const done = (bus.progress || 0) >= stopProg - 0.01;
+      const eta = estimateStopEta(bus, route, i);
+      const cls = done ? 'stop-chip done' : (i === nextIdx ? 'stop-chip next' : 'stop-chip');
+      const etaTxt = done ? 'passed' : formatEta(eta);
+      return `<div class="${cls}">${i + 1}. ${s.n} <span class="eta">${etaTxt}</span></div>`;
+    }).join('');
   }
   if (suggestionBoxEl) {
     const heavy = hasHeavyTraffic(route);
-    if (route.alt && heavy && !usingAlt) {
+    const dismissed = state.dismissedSugg.has(route.id);
+    if (route.alt && heavy && !usingAlt && !dismissed) {
+      const saved = estimateSavings(route);
       suggestionBoxEl.innerHTML = `
-        <div class="sug-head"><span class="dot red"></span> Faster route suggested</div>
-        <div class="sug-body">${route.alt.name} — saves ~${estimateSavings(route)} min</div>
-        <div class="sug-actions">
-          <button class="btn primary" id="acceptAlt">Accept</button>
-          <button class="btn ghost" id="dismissAlt">Dismiss</button>
+        <h4>Faster route suggested <span class="save">Save ${saved} min</span></h4>
+        <p><strong>${route.alt.name}</strong> avoids the heavy segments currently on ${ar.name}.</p>
+        <div class="actions">
+          <button class="btn btn-primary" id="acceptAlt">Accept</button>
+          <button class="btn btn-ghost" id="dismissAlt">Dismiss</button>
         </div>
+        <div class="suggestion-note">The suggested route is drawn on the map as a dashed line.</div>
       `;
       suggestionBoxEl.hidden = false;
       document.getElementById('acceptAlt')?.addEventListener('click', () => {
@@ -543,12 +675,15 @@ function renderRouteOpt() {
         drawMap();
       });
       document.getElementById('dismissAlt')?.addEventListener('click', () => {
-        state.usingAlt.delete(route.id);
+        state.dismissedSugg.add(route.id);
         renderRouteOpt();
-        drawMap();
       });
     } else if (usingAlt) {
-      suggestionBoxEl.innerHTML = `<div class="sug-head">Using suggested route</div><button class="btn ghost" id="revertAlt">Revert to original</button>`;
+      suggestionBoxEl.innerHTML = `
+        <h4>Using suggested route</h4>
+        <p>${route.alt.name} is active for this bus.</p>
+        <div class="actions"><button class="btn btn-ghost" id="revertAlt">Revert to original</button></div>
+      `;
       suggestionBoxEl.hidden = false;
       document.getElementById('revertAlt')?.addEventListener('click', () => {
         state.usingAlt.delete(route.id);
@@ -577,22 +712,7 @@ function estimateSavings(route) {
 function routeTime(route, useAlt) {
   const ar = useAlt && route.alt ? route.alt : getActiveRoute(route);
   const lls = ar.stops.map(s => s.ll);
-  let len = 0;
-  for (let i = 1; i < lls.length; i++) len += distanceMeters(lls[i - 1], lls[i]);
-  let t = len / TRAFFIC_SPEED.green / 60; // optimistic base
-  if (ar.traffic) {
-    for (let i = 0; i < ar.traffic.length; i++) {
-      const seg = [lls[i], lls[i + 1]];
-      const sl = distanceMeters(seg[0], seg[1]);
-      const tc = ar.traffic[i];
-      let v = TRAFFIC_SPEED.green;
-      if (tc === 'yellow') v = TRAFFIC_SPEED.yellow;
-      if (tc === 'red') v = TRAFFIC_SPEED.red;
-      t = len / TRAFFIC_SPEED.green / 60; // reset simplistic; better
-    }
-  }
-  // simpler
-  t = 0;
+  let t = 0;
   for (let i = 0; i < lls.length - 1; i++) {
     const sl = distanceMeters(lls[i], lls[i + 1]);
     let v = TRAFFIC_SPEED.green;
@@ -623,19 +743,18 @@ function renderRoster() {
     const absent = s.includes('|absent');
     const stopName = ar.stops[stopIdx] ? ar.stops[stopIdx].n : '';
     const reached = bus.progress >= stopProgressForStop(ar, stopIdx) - 0.01;
-    let st = absent ? 'absent' : (reached ? 'onbus' : 'expected');
-    if (st === 'absent') {
-      // stay absent
-    }
-    if (absent) st = 'absent';
-    else st = (reached ? 'onbus' : 'expected');
+    const st = absent ? 'absent' : (reached ? 'onbus' : 'expected');
     if (q && !name.toLowerCase().includes(q)) return;
     if (f !== 'all' && st !== f) return;
     rows.push({ name, cls, stopName, st });
   });
+  if (!rows.length) {
+    rosterBodyEl.innerHTML = '<tr class="roster-empty"><td colspan="4">No students match your filters.</td></tr>';
+    return;
+  }
   rosterBodyEl.innerHTML = rows.map(x => `
     <tr>
-      <td>${x.name}</td>
+      <td class="stu">${x.name}</td>
       <td>${x.cls}</td>
       <td>${x.stopName}</td>
       <td><span class="pill ${x.st}">${x.st === 'onbus' ? 'On Bus' : (x.st === 'absent' ? 'Absent' : 'Expected')}</span></td>
@@ -644,17 +763,18 @@ function renderRoster() {
 }
 
 function updateCharts() {
-  // donut - total present vs expected
   const bus = getBus(state.selectedBusId);
-  let present = 0, expected = 0;
+  let counts = { present: 0, absent: 0, expected: 0 };
   if (bus) {
-    const total = (bus.students || []).length;
-    present = countPresentOnBus(bus);
-    expected = total;
+    counts = attendanceCounts(bus);
   } else {
-    BUSES.forEach(b => { present += countPresentOnBus(b); expected += (b.students || []).length; });
+    BUSES.forEach(b => {
+      const c = attendanceCounts(b);
+      counts.present += c.present;
+      counts.absent += c.absent;
+      counts.expected += c.expected;
+    });
   }
-  const absent = Math.max(0, expected - present);
   const ctx = document.getElementById('attChart');
   if (!ctx) return;
   if (chart) { chart.destroy(); chart = null; }
@@ -662,21 +782,40 @@ function updateCharts() {
     chart = new Chart(ctx, {
       type: 'doughnut',
       data: {
-        labels: ['Present', 'Absent/Not yet on bus'],
+        labels: ['Present', 'Absent', 'Expected'],
         datasets: [{
-          data: [present, absent],
-          backgroundColor: ['#16A34A', '#E5E7EB'],
+          data: [counts.present, counts.absent, counts.expected],
+          backgroundColor: ['#16A34A', '#DC2626', '#94A3B8'],
           borderWidth: 0
         }]
       },
       options: {
         responsive: true,
+        maintainAspectRatio: true,
         plugins: {
-          legend: { position: 'bottom' }
+          legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } }
         }
       }
     });
   } catch (e) {}
+}
+
+function populateAttSelect() {
+  if (!attBusSelectEl) return;
+  attBusSelectEl.innerHTML = BUSES.map(b =>
+    `<option value="${b.id}">${b.name}</option>`
+  ).join('');
+  if (state.selectedBusId) attBusSelectEl.value = String(state.selectedBusId);
+}
+
+function updateAttendance() {
+  const bus = getBus(state.selectedBusId);
+  if (!bus) return;
+  const c = attendanceCounts(bus);
+  if (attPresentEl) attPresentEl.textContent = c.present;
+  if (attAbsentEl) attAbsentEl.textContent = c.absent;
+  if (attExpectedEl) attExpectedEl.textContent = c.expected;
+  if (attBusSelectEl) attBusSelectEl.value = String(bus.id);
 }
 
 function tickSimulation() {
@@ -700,6 +839,19 @@ function tickSimulation() {
     const deltaDist = v * (TICK_MS / 1000) * TIME_SCALE;
     const deltaProg = deltaDist / total;
     bus.progress = Math.min(1, (bus.progress || 0) + deltaProg);
+    // recycle after arrival so the demo keeps ticking
+    if (bus.progress >= 1) {
+      if (!bus.arrivedFlag) {
+        bus.arrivedFlag = true;
+        bus.arrivedTick = state.tick;
+        pushAlert('info', bus.name + ' arrived at ' + SCHOOL.short + '.');
+      } else if (state.tick - bus.arrivedTick > 15) {
+        bus.progress = 0.01;
+        bus.delay = 0;
+        bus.arrivedFlag = false;
+        pushAlert('info', bus.name + ' started its return run.');
+      }
+    }
     // decay delay slowly
     if ((state.tick % 5) === 0 && (bus.delay || 0) > 0) {
       bus.delay = Math.max(0, (bus.delay || 0) - 0.5);
@@ -715,17 +867,14 @@ function maybeGenerateAlert() {
       const r = getRoute(b.routeId);
       const amt = Math.round(3 + Math.random() * 12);
       b.delay = Math.max(b.delay || 0, amt - 2);
-      state.alerts.unshift({ type: 'warn', text: b.name + ' delayed by ~' + amt + ' min due to traffic on ' + r.name + '.' });
+      pushAlert('warn', b.name + ' delayed by ~' + amt + ' min due to traffic on ' + r.name + '.');
     } else {
-      // heavy traffic alert
       const routesWithHeavy = ROUTES.filter(hasHeavyTraffic);
       if (routesWithHeavy.length > 0) {
         const r = routesWithHeavy[Math.floor(Math.random() * routesWithHeavy.length)];
-        state.alerts.unshift({ type: 'danger', text: 'Heavy traffic reported on ' + r.code + ' (' + r.name + ').' });
+        pushAlert('danger', 'Heavy traffic reported on ' + r.code + ' (' + r.name + ').');
       }
     }
-    if (state.alerts.length > 8) state.alerts = state.alerts.slice(0, 8);
-    renderAlerts();
   }
 }
 
@@ -740,6 +889,8 @@ function trafficFluctuate() {
         if (t === 'red') return roll < 0.4 ? 'yellow' : (roll < 0.5 ? 'green' : 'red');
         return t;
       });
+      // traffic shifted → a dismissed suggestion may become relevant again
+      state.dismissedSugg.delete(r.id);
     }
   });
 }
@@ -754,12 +905,17 @@ function initLegend() {
 }
 
 function bindRosterFilters() {
-  if (studentSearchEl) studentSearchEl.addEventListener('input', () => { renderRoster(); updateCharts(); });
-  if (statusFilterEl) statusFilterEl.addEventListener('change', () => { renderRoster(); updateCharts(); });
+  if (studentSearchEl) studentSearchEl.addEventListener('input', () => { renderRoster(); });
+  if (statusFilterEl) statusFilterEl.addEventListener('change', () => { renderRoster(); });
+  if (attBusSelectEl) attBusSelectEl.addEventListener('change', () => {
+    const id = parseInt(attBusSelectEl.value, 10);
+    if (id && id !== state.selectedBusId) selectBus(id);
+  });
 }
 
 function init() {
   initClock();
+  populateAttSelect();
   renderBusList();
   renderRouteChips();
   renderAlerts();
@@ -785,6 +941,7 @@ function init() {
     renderBusDetails();
     renderRouteOpt();
     renderRoster();
+    updateAttendance();
     updateSummary();
     updateCharts();
     drawMap();

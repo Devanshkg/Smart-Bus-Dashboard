@@ -41,7 +41,7 @@ const ROUTES = [
       { n: "Jala Hobli Office", ll: [13.1620, 77.5955] },
       { n: "Stonehill School", ll: [13.170998, 77.596295] }
     ],
-    traffic: ["green", "yellow", "green", "red", "yellow", "green", "green"],
+    traffic: ["green", "yellow", "green", "yellow", "yellow", "yellow", "green"],
     alt: {
       name: "Whitefield Express (via ORR)",
       stops: [
@@ -115,7 +115,7 @@ const ROUTES = [
       { n: "Jala Hobli Office", ll: [13.1620, 77.5955] },
       { n: "Stonehill School", ll: [13.170998, 77.596295] }
     ],
-    traffic: ["green", "yellow", "yellow", "red", "yellow", "green", "green"],
+    traffic: ["green", "yellow", "yellow", "yellow", "yellow", "green", "green"],
     alt: {
       name: "Indiranagar Inner Ring Road",
       stops: [
@@ -139,7 +139,7 @@ const ROUTES = [
       { n: "Bommenahalli", ll: [13.1535, 77.5948] },
       { n: "Stonehill School", ll: [13.170998, 77.596295] }
     ],
-    traffic: ["green", "yellow", "yellow", "red", "yellow", "green", "green"],
+    traffic: ["green", "yellow", "yellow", "yellow", "yellow", "green", "green"],
     alt: {
       name: "KR Puram ORR Bypass",
       stops: [
@@ -163,7 +163,7 @@ const ROUTES = [
       { n: "Bommenahalli", ll: [13.1535, 77.5948] },
       { n: "Stonehill School", ll: [13.170998, 77.596295] }
     ],
-    traffic: ["green", "yellow", "red", "yellow", "yellow", "green", "green"],
+    traffic: ["green", "yellow", "yellow", "yellow", "yellow", "green", "green"],
     alt: {
       name: "Electronic City Express",
       stops: [
@@ -207,7 +207,7 @@ const BUSES = [
   },
   {
     id: 3, name: "Bus 3", routeId: 3, driver: "Mohammed Irfan", phone: "+91 99012 77456",
-    capacity: 40, progress: 0.35, delay: 12,
+    capacity: 40, progress: 0.22, delay: 12,
     students: [
       "Vihaan Agarwal|Grade 1|0", "Aisha Khan|Grade 1|1", "Liam D'Souza|Grade 2|1",
       "Anika Bose|Grade 2|2", "Samar Joshi|Grade 3|2", "Navya Holla|Grade 3|3",
@@ -219,7 +219,7 @@ const BUSES = [
   },
   {
     id: 4, name: "Bus 4", routeId: 4, driver: "Venkatesh Reddy", phone: "+91 97400 55821",
-    capacity: 40, progress: 0.42, delay: 3,
+    capacity: 40, progress: 0.42, delay: 1,
     students: [
       "Arnav Hegde|Grade 1|0", "Saanvi Kulkarni|Grade 1|1", "Aryan Bakshi|Grade 2|2",
       "Myra Nathan|Grade 2|2", "Veer Mahajan|Grade 3|3", "Diya Suresh|Grade 3|3",
@@ -253,8 +253,8 @@ const BUSES = [
 ];
 
 const SEED_ALERTS = [
-  { type: "danger", text: "Bus 3 delayed by 12 minutes due to heavy traffic on Hebbal Junction." },
-  { type: "danger", text: "Heavy traffic reported on R3 (Hebbal / Jakkur) — 4 segments congested." },
+  { type: "danger", text: "Bus 3 delayed by 12 minutes due to heavy traffic on the ITPL–KR Puram road." },
+  { type: "danger", text: "Heavy traffic reported on R3 (Marathahalli) — 2 segments congested." },
   { type: "warn", text: "Bus 1 delayed by 6 minutes — slow moving traffic near Hunasamaranahalli." },
   { type: "info", text: "Bus 6 arriving at Stonehill School — 2 min to final stop." },
   { type: "info", text: "Morning transport check complete · 6 buses dispatched." }
