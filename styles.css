@@ -69,7 +69,7 @@ a { color: var(--blue); }
 }
 
 .clock { text-align: right; }
-#clockTime { font-size: 30px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+#clockTime { font-size: 36px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
 #clockDate { font-size: 13.5px; opacity: .85; margin-top: 4px; }
 
 /* ---------- Summary ---------- */
@@ -91,7 +91,7 @@ a { color: var(--blue); }
 .stat-card.info { border-left-color: var(--arriving); }
 .stat-card.danger { border-left-color: var(--red); }
 .stat-label { font-size: 13px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
-.stat-value { font-size: 32px; font-weight: 800; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.stat-value { font-size: 38px; font-weight: 800; line-height: 1.15; font-variant-numeric: tabular-nums; }
 .stat-card.ok .stat-value { color: var(--green); }
 .stat-card.warn .stat-value { color: var(--amber); }
 .stat-card.info .stat-value { color: var(--arriving); }
