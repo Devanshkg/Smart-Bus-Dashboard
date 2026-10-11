@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Live tracker · Stonehill</title>
+  <meta name="theme-color" content="#0B5FD9" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📍</text></svg>" />
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .dev-page {
+      min-height: 100dvh; background: var(--bg, #f2f5fa);
+      display: flex; align-items: center; justify-content: center; padding: 20px;
+    }
+    .dev-card {
+      background: #fff; border: 1px solid var(--line, #dfe6f0); border-radius: 18px;
+      max-width: 420px; width: 100%; padding: 24px; box-shadow: 0 12px 34px rgba(10, 30, 70, .12);
+    }
+    .dev-head { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+    .dev-head .brand-mark { font-size: 26px; }
+    .dev-head h1 { margin: 0; font-size: 19px; font-weight: 800; color: var(--text, #0f172a); }
+    .dev-head p { margin: 2px 0 0; font-size: 12.5px; color: var(--muted, #64748b); font-weight: 600; }
+    .dev-status {
+      display: flex; align-items: center; gap: 10px; margin: 16px 0;
+      background: #f8fafc; border: 1px solid var(--line, #dfe6f0); border-radius: 12px; padding: 12px 14px;
+    }
+    .dev-status .live-dot { width: 12px; height: 12px; }
+    .dev-status b { font-size: 14.5px; }
+    .dev-status .st-sub { font-size: 12px; color: var(--muted, #64748b); font-weight: 600; margin-top: 2px; }
+    .dev-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0; }
+    .dev-cell {
+      background: #f8fafc; border: 1px solid var(--line, #dfe6f0); border-radius: 10px; padding: 10px 12px;
+    }
+    .dev-cell .n { font-size: 16px; font-weight: 800; color: var(--text, #0f172a); font-variant-numeric: tabular-nums; }
+    .dev-cell .l { font-size: 11px; font-weight: 700; color: var(--muted, #64748b); text-transform: uppercase; letter-spacing: .3px; }
+    .dev-actions { display: flex; gap: 10px; margin-top: 16px; }
+    .dev-actions .btn { flex: 1; font-size: 15px; padding: 12px; }
+    .dev-code {
+      text-align: center; font-variant-numeric: tabular-nums; letter-spacing: 8px;
+      font-weight: 900; font-size: 26px; color: var(--blue-dark, #0B5FD9); margin: 4px 0 16px;
+    }
+    .dev-note { font-size: 12px; color: var(--muted, #64748b); font-weight: 600; text-align: center; margin-top: 14px; }
+    .dev-err { background: #fdeaea; color: #b91c1c; border: 1px solid #f7c9c9; border-radius: 10px; padding: 10px 12px; font-size: 13px; font-weight: 700; margin-top: 12px; display: none; }
+  </style>
+</head>
+<body>
+  <div class="dev-page">
+    <div class="dev-card">
+      <div class="dev-head">
+        <div class="brand-mark">🚌</div>
+        <div>
+          <h1>Stonehill live tracker</h1>
+          <p>Reports this device's GPS to the dashboard</p>
+        </div>
+      </div>
+
+      <div class="dev-code" id="devCode">—</div>
+      <p class="dev-note" id="devHint">Pairing code from the transport dashboard.</p>
+
+      <div class="dev-status">
+        <span class="live-dot" id="stDot"></span>
+        <div style="flex:1">
+          <b id="stText">Ready</b>
+          <div class="st-sub" id="stSub">Tap “Share my location” to begin.</div>
+        </div>
+      </div>
+      <div id="stSpin" hidden>connecting…</div>
+
+      <div class="dev-grid" id="fixGrid" hidden>
+        <div class="dev-cell"><div class="n" id="gAccuracy">—</div><div class="l">Accuracy</div></div>
+        <div class="dev-cell"><div class="n" id="gSpeed">—</div><div class="l">Speed</div></div>
+        <div class="dev-cell"><div class="n" id="gHeading">—</div><div class="l">Heading</div></div>
+        <div class="dev-cell"><div class="n" id="gLast">—</div><div class="l">Last sent</div></div>
+      </div>
+
+      <div class="dev-actions">
+        <button class="btn btn-primary" id="startBtn">Share my location</button>
+        <button class="btn btn-ghost" id="stopBtn" style="flex:0 0 auto" hidden>Stop</button>
+      </div>
+
+      <div class="dev-err" id="devErr"></div>
+      <p class="dev-note">Keep this tab open and the screen on while the bus is running. Only live while you're connected (Wi-Fi / mobile data) and location permission is on.</p>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const params = new URLSearchParams(location.search);
+      const CODE = (params.get('c') || '').toUpperCase();
+      const TOKEN = params.get('t') || '';
+
+      const devCode = document.getElementById('devCode');
+      const devHint = document.getElementById('devHint');
+      const stDot = document.getElementById('stDot');
+      const stText = document.getElementById('stText');
+      const stSub = document.getElementById('stSub');
+      const fixGrid = document.getElementById('fixGrid');
+      const startBtn = document.getElementById('startBtn');
+      const stopBtn = document.getElementById('stopBtn');
+      const devErr = document.getElementById('devErr');
+
+      let watchId = null;
+      let lastFix = null;
+      let reportTimer = null;
+
+      const wasSync = false; // helper no longer used
+
+      function setStatus(cls, text, sub, dotColor) {
+        stDot.style.background = dotColor || '#94A3B8';
+        stText.textContent = text;
+        stSub.textContent = sub || '';
+        startBtn.textContent = (watchId !== null) ? 'Sharing…' : 'Share my location';
+        startBtn.disabled = (watchId !== null);
+        stopBtn.hidden = (watchId === null);
+      }
+
+      function setErr(msg) {
+        devErr.textContent = msg;
+        devErr.style.display = msg ? 'block' : 'none';
+      }
+
+      if (!CODE || !/^[0-9a-f]{48}$/.test(TOKEN)) {
+        setErr('This link is invalid or incomplete. Scan the QR from the dashboard one more time.');
+        startBtn.disabled = true;
+        return;
+      }
+      devCode.textContent = CODE.slice(0, 3) + ' ' + CODE.slice(3);
+      devHint.textContent = 'Sharing live location for this device to the dashboard.';
+
+      async function sendFix() {
+        if (!lastFix) return;
+        const body = {
+          code: CODE,
+          token: TOKEN,
+          lat: lastFix.coords.latitude,
+          lng: lastFix.coords.longitude,
+          accuracy: lastFix.coords.accuracy != null ? Math.round(lastFix.coords.accuracy) : null,
+          heading: lastFix.coords.heading != null ? Math.round(lastFix.coords.heading) : null,
+          speed: lastFix.coords.speed != null ? Math.round(lastFix.coords.speed * 10) / 10 : null
+        };
+        try {
+          const res = await fetch('./api/report', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+          if (res.ok) {
+            const sec = document.getElementById('gLast');
+            const d = new Date();
+            sec.textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            setStatus('live', 'Connected — sharing live', 'Updates every few seconds.', '#16A34A');
+          } else {
+            setErr('Rejected by server (' + res.status + '). Re-pair from the dashboard if this keeps happening.');
+          }
+        } catch (e) {
+          setErr('Network error - cannot reach the dashboard. Check your connection.');
+        }
+      }
+
+      function onFix(pos) {
+        setErr('');
+        lastFix = pos;
+        fixGrid.hidden = false;
+        const acc = pos.coords.accuracy;
+        document.getElementById('gAccuracy').textContent = (acc != null) ? '±' + Math.round(acc) + ' m' : '—';
+        const spd = pos.coords.speed;
+        const kmh = (spd != null) ? Math.round(spd * 3.6) + ' km/h' : '—';
+        document.getElementById('gSpeed').textContent = kmh;
+        const hdg = pos.coords.heading;
+        document.getElementById('gHeading').textContent = (hdg != null) ? Math.round(hdg) + '°' : '—';
+        setStatus('live', 'Connected — sharing live', 'Location locked.', '#16A34A');
+      }
+
+      function onErr(err) {
+        if (watchId !== null && err && err.code === 1) {
+          watchId = null;
+          if (reportTimer) { clearInterval(reportTimer); reportTimer = null; }
+          setStatus('', 'Location permission needed', 'Allow “While Using” in site settings.', '#F59E0B');
+          startBtn.disabled = false;
+          startBtn.textContent = 'Try again';
+          stopBtn.hidden = true;
+          setErr('On iPhone: Settings → Privacy & Security → Location Services → Safari → While Using · then reload and try again. On Android: site settings → Location → Always/While using.');
+        } else if (watchId !== null) {
+          setErr('No location fix yet (' + (err && (err.message || 'error')) + '). Try an open area or check GPS.');
+        }
+      }
+
+      function startSharing() {
+        setErr('');
+        setStatus('', 'Requesting location…', 'Approve the permission prompt.', '#F59E0B');
+        if (!navigator.geolocation) {
+          setErr('This browser does not support geolocation. Try Safari or Chrome.');
+          return;
+        }
+        watchId = navigator.geolocation.watchPosition(onFix, onErr, {
+          enableHighAccuracy: true,
+          maximumAge: 3000,
+          timeout: 20000
+        });
+        if (reportTimer) clearInterval(reportTimer);
+        reportTimer = setInterval(sendFix, 3000);
+        // try an immediate opportunistic fix
+        navigator.geolocation.getCurrentPosition(onFix, onErr, {
+          enableHighAccuracy: true, maximumAge: 3000, timeout: 10000
+        });
+      }
+
+      function stopSharing() {
+        if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+        if (reportTimer) { clearInterval(reportTimer); reportTimer = null; }
+        setStatus('', 'Stopped sharing', 'The bus will show as offline on the dashboard.', '#94A3B8');
+        startBtn.disabled = false;
+        startBtn.textContent = 'Share my location';
+        stopBtn.hidden = true;
+      }
+
+      startBtn.addEventListener('click', startSharing);
+      stopBtn.addEventListener('click', stopSharing);
+    })();
+  </script>
+</body>
+</html>

@@ -53,7 +53,10 @@
       <section class="panel">
         <div class="panel-head">
           <h2>Buses</h2>
-          <span class="panel-hint" id="busCountHint">6 active</span>
+          <div class="ph-actions">
+            <span class="panel-hint" id="busCountHint">6 active</span>
+            <button class="btn btn-primary btn-sm" id="addBusBtn">+ Add Bus</button>
+          </div>
         </div>
         <div id="busList" class="bus-list"></div>
       </section>
@@ -93,6 +96,7 @@
               <div>
                 <div class="legend-sub">Map</div>
                 <div class="legend-row"><i class="ico">🚌</i> Live bus</div>
+                <div class="legend-row"><i class="dot live-dot"></i> Live device</div>
                 <div class="legend-row"><i class="ico">🏫</i> School</div>
                 <div class="legend-row"><i class="dot stop"></i> Bus stop</div>
                 <div class="legend-row"><i class="dashed"></i> Faster route</div>
@@ -174,6 +178,35 @@
     Stonehill International School · Tarahunise, Bengaluru · Prototype dashboard with simulated data ·
     Map © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> · © <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a>
   </footer>
+
+  <div class="modal-backdrop" id="addBusModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <button class="modal-x" id="modalClose" aria-label="Close">×</button>
+
+      <div id="modalStepForm">
+        <h3 id="modalTitle">Add a live bus</h3>
+        <p class="muted">Pair the driver's phone (iPhone or Android). Apple's Find My doesn't give third-party apps live positions, so the phone reports its own GPS instead — more accurate anyway.</p>
+        <label class="field-label" for="busLabel">Bus label</label>
+        <input id="busLabel" class="roster-search" maxlength="64" placeholder="e.g. Bus 7 · driver phone" />
+        <div class="field-label">Marker colour</div>
+        <div class="swatches" id="swatches"></div>
+        <div class="modal-err" id="modalErr"></div>
+        <button class="btn btn-primary btn-block" id="registerBusBtn">Generate pairing code</button>
+      </div>
+
+      <div id="modalStepDone" hidden>
+        <h3>Pair the device</h3>
+        <p class="muted">These are shown once. Scan the QR below with the iPhone camera (or open the link), then tap <b>Share my location</b>.</p>
+        <div class="pair-code" id="pairCode">·······</div>
+        <div class="pair-qr"><img id="pairQR" alt="Pairing QR code"></div>
+        <p class="muted center">Location is live only while the device page is open and connected over the network.</p>
+        <div class="actions center">
+          <button class="btn btn-ghost" id="copyLinkBtn">Copy link</button>
+          <button class="btn btn-primary" id="doneBtn">Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>

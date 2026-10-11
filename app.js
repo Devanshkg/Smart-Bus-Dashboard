@@ -45,6 +45,24 @@ const attPresentEl = document.getElementById('attPresent');
 const attAbsentEl = document.getElementById('attAbsent');
 const attExpectedEl = document.getElementById('attExpected');
 
+const API_BASE = window.API_BASE || '';
+const LIVE_POLL_MS = 2000;
+const SWATCH_COLORS = ['#2563EB', '#0F766E', '#7C3AED', '#BE185D', '#B45309', '#047857', '#DB2777', '#334155'];
+
+const addBusBtnEl = document.getElementById('addBusBtn');
+const modalEl = document.getElementById('addBusModal');
+const modalCloseEl = document.getElementById('modalClose');
+const modalStepForm = document.getElementById('modalStepForm');
+const modalStepDone = document.getElementById('modalStepDone');
+const busLabelEl = document.getElementById('busLabel');
+const swatchesEl = document.getElementById('swatches');
+const registerBusBtn = document.getElementById('registerBusBtn');
+const pairCodeEl = document.getElementById('pairCode');
+const pairQREl = document.getElementById('pairQR');
+const copyLinkBtn = document.getElementById('copyLinkBtn');
+const modalDoneBtn = document.getElementById('doneBtn');
+const modalErrEl = document.getElementById('modalErr');
+
 let leafletMap = null;
 let routeLines = {};
 let altRouteLines = {};
@@ -53,6 +71,11 @@ let stopMarkers = {};
 let dirMarkers = {};
 let schoolMarker = null;
 let chart = null;
+let liveBuses = new Map(); // device code -> live bus snapshot
+let liveMarkers = {};      // device code -> L.Marker
+let livePollTimer = null;
+let swatchSel = 0;
+let pairing = null;        // last registered device { code, token, label, color, qrPath }
 
 function initClock() {
   updateClock();
@@ -189,7 +212,30 @@ function renderBusList() {
     card.addEventListener('click', () => selectBus(bus.id));
     busListEl.appendChild(card);
   });
-  busCountHint.textContent = BUSES.length + ' active';
+  if (liveBuses.size) {
+    const group = document.createElement('div');
+    group.className = 'bus-group';
+    group.innerHTML = '<span class="bus-group-label">Live devices</span>';
+    busListEl.appendChild(group);
+    [...liveBuses.values()].forEach(bus => {
+      const active = state.selectedBusId === bus.code;
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'bus-item' + (active ? ' selected' : '');
+      const st = liveStatus(bus);
+      card.innerHTML = `
+        <span class="dot live-dot${bus.waiting ? ' wait' : ''}" style="background:${bus.color || '#2563EB'}"></span>
+        <div class="bi-main">
+          <div class="bi-top"><strong>${escapeHtml(bus.label || bus.code)}</strong><span class="bi-eta">${bus.pos && !bus.offline && bus.etaMins != null ? formatEta(bus.etaMins) : (bus.waiting ? 'pairing…' : '—')}</span></div>
+          <div class="bi-sub">${escapeHtml(bus.code)} · <b style="color:${st.color}">${st.label}</b></div>
+          <div class="bi-stop"><span>Last seen:</span> ${bus.last_seen ? timeAgo(bus.last_seen) : '—'}</div>
+        </div>
+      `;
+      card.addEventListener('click', () => selectBus(bus.code));
+      busListEl.appendChild(card);
+    });
+  }
+  busCountHint.textContent = (BUSES.length + liveBuses.size) + ' active';
 }
 
 function estimateEtaMins(bus, route) {
@@ -394,10 +440,11 @@ function drawMap() {
 }
 
 function selectBus(busId) {
+  const isLive = typeof busId === 'string' && liveBuses.has(busId);
   const bus = getBus(busId);
-  if (!bus) return;
+  if (!bus && !isLive) return;
   state.selectedBusId = busId;
-  state.selectedRouteId = bus.routeId;
+  if (bus) state.selectedRouteId = bus.routeId;
   renderBusList();
   renderRouteChips();
   renderBusDetails();
@@ -407,17 +454,21 @@ function selectBus(busId) {
   updateCharts();
   updateSummary();
   drawMap();
-  // fly to
-  const m = busMarkers[busId];
+  const m = isLive ? liveMarkers[busId] : busMarkers[busId];
   if (m && leafletMap) {
     leafletMap.flyTo(m.getLatLng(), 14, { duration: 0.8 });
   }
 }
 
 function renderBusDetails() {
+  const live = (typeof state.selectedBusId === 'string') ? liveBuses.get(state.selectedBusId) : null;
+  if (live) { renderLiveDetails(live); return; }
   const bus = getBus(state.selectedBusId);
   if (!bus) {
     busDetailsEl.innerHTML = '<p class="muted">Select a bus to see details.</p>';
+    if (detailsStatusBadgeEl) { detailsStatusBadgeEl.textContent = '—'; detailsStatusBadgeEl.style.background = ''; detailsStatusBadgeEl.style.color = ''; }
+    if (capacityTextEl) capacityTextEl.textContent = '0 / 0';
+    if (capacityBarEl) capacityBarEl.style.width = '0%';
     return;
   }
   const route = getRoute(bus.routeId);
@@ -568,7 +619,8 @@ function attendanceCounts(bus) {
 }
 
 function updateSummary() {
-  statTotal.textContent = BUSES.length;
+  const liveOnline = [...liveBuses.values()].filter(b => b.pos && !b.offline).length;
+  statTotal.textContent = BUSES.length + liveBuses.size;
   let ontime = 0, delayed = 0, present = 0;
   BUSES.forEach(b => {
     const r = getRoute(b.routeId);
@@ -578,7 +630,7 @@ function updateSummary() {
     present += countPresentOnBus(b);
   });
   const heavy = ROUTES.filter(hasHeavyTraffic).length;
-  statOnTime.textContent = ontime;
+  statOnTime.textContent = ontime + liveOnline;
   statDelayed.textContent = delayed;
   statPresent.textContent = present;
   statTraffic.textContent = heavy;
@@ -725,6 +777,11 @@ function routeTime(route, useAlt) {
 }
 
 function renderRoster() {
+  const liveBus = (typeof state.selectedBusId === 'string') ? liveBuses.get(state.selectedBusId) : null;
+  if (liveBus) {
+    rosterBodyEl.innerHTML = '<tr><td colspan="4" class="muted">Live device — no student roster attached.</td></tr>';
+    return;
+  }
   const bus = getBus(state.selectedBusId);
   if (!bus) {
     rosterBodyEl.innerHTML = '<tr><td colspan="4" class="muted">Select a bus</td></tr>';
@@ -765,7 +822,9 @@ function renderRoster() {
 function updateCharts() {
   const bus = getBus(state.selectedBusId);
   let counts = { present: 0, absent: 0, expected: 0 };
-  if (bus) {
+  if (typeof state.selectedBusId === 'string' && liveBuses.has(state.selectedBusId)) {
+    counts = { present: 0, absent: 0, expected: 0 };
+  } else if (bus) {
     counts = attendanceCounts(bus);
   } else {
     BUSES.forEach(b => {
@@ -810,7 +869,14 @@ function populateAttSelect() {
 
 function updateAttendance() {
   const bus = getBus(state.selectedBusId);
-  if (!bus) return;
+  if (!bus) {
+    if (typeof state.selectedBusId === 'string') {
+      if (attPresentEl) attPresentEl.textContent = '0';
+      if (attAbsentEl) attAbsentEl.textContent = '0';
+      if (attExpectedEl) attExpectedEl.textContent = '0';
+    }
+    return;
+  }
   const c = attendanceCounts(bus);
   if (attPresentEl) attPresentEl.textContent = c.present;
   if (attAbsentEl) attAbsentEl.textContent = c.absent;
@@ -913,6 +979,213 @@ function bindRosterFilters() {
   });
 }
 
+/* ---------- Live device tracking (Add Bus / pairing) ---------- */
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function timeAgo(ts) {
+  if (!ts) return '—';
+  const s = Math.max(0, Math.round((Date.now() - new Date(ts).getTime()) / 1000));
+  if (s < 5) return 'just now';
+  if (s < 60) return s + 's ago';
+  const m = Math.round(s / 60);
+  if (m < 60) return m + 'm ago';
+  const h = Math.round(m / 60);
+  return h + 'h ago';
+}
+
+function liveStatus(lb) {
+  if (lb.waiting) return { label: 'Waiting for device', color: '#F59E0B' };
+  if (lb.offline) return { label: 'Offline', color: '#94A3B8' };
+  return { label: 'Live', color: '#16A34A' };
+}
+
+function liveBusIcon(code, lb, status, selected) {
+  const num = (lb.label || '').match(/Bus\s*(\d+)/i);
+  const glyph = num ? num[1] : '⌖';
+  const cls = lb.waiting ? 'waiting' : (lb.offline ? 'offline' : 'ontime');
+  return L.divIcon({
+    className: 'bus-marker',
+    html: `
+      <div class="bus-icon${selected ? ' selected' : ''}">
+        <div class="bus-pin ${cls}">${glyph}</div>
+        ${selected ? `<div class="bus-num">${escapeHtml(lb.label || code)}</div>` : ''}
+      </div>
+    `,
+    iconSize: [36, 36],
+    iconAnchor: [18, 18]
+  });
+}
+
+function liveBusTip(lb, status) {
+  const eta = lb.etaMins == null ? '—' : formatEta(lb.etaMins);
+  const sub = lb.waiting ? 'waiting for first fix'
+    : (lb.offline ? 'offline · last seen ' + timeAgo(lb.last_seen) : 'ETA ' + eta);
+  return `${lb.label} (${lb.code}) · ${status.label} · ${sub}`;
+}
+
+function upsertLiveMarker(code, lb) {
+  if (!leafletMap) return;
+  const ll = lb.pos ? L.latLng(lb.pos.lat, lb.pos.lng) : null;
+  const status = liveStatus(lb);
+  const selected = state.selectedBusId === code;
+  const markerKey = status.label + (selected ? '1' : '0');
+  let mk = liveMarkers[code];
+  if (!mk) {
+    if (!ll) return; // no marker until first fix; list still shows "waiting"
+    mk = L.marker(ll, { icon: liveBusIcon(code, lb, status, selected) }).addTo(leafletMap);
+    mk.on('click', () => selectBus(code));
+    mk.setTooltipContent(liveBusTip(lb, status));
+    liveMarkers[code] = mk;
+  } else {
+    if (ll) mk.setLatLng(ll);
+    if (mk._liveKey !== markerKey) {
+      mk.setIcon(liveBusIcon(code, lb, status, selected));
+      mk._liveKey = markerKey;
+    }
+    mk.setTooltipContent(liveBusTip(lb, status));
+  }
+}
+
+async function pollLiveBuses() {
+  let data;
+  try {
+    const res = await fetch(API_BASE + '/api/buses', { cache: 'no-store' });
+    if (!res.ok) return;
+    data = await res.json();
+  } catch (e) { return; }
+  const seen = new Set();
+  (data.buses || []).forEach(b => {
+    seen.add(b.code);
+    const prev = liveBuses.get(b.code);
+    if (!prev) {
+      liveBuses.set(b.code, Object.assign({ launched: Date.now() }, b));
+      pushAlert('info', 'Live tracker "' + escapeHtml(b.label || b.code) + '" joined the fleet.');
+    } else {
+      if (prev.pos && !prev.offline && b.offline) {
+        pushAlert('warn', '"' + escapeHtml(b.label || b.code) + '" went offline — last fix ' + timeAgo(b.last_seen) + '.');
+      }
+      if (prev.offline && b.pos && !b.offline) {
+        pushAlert('info', '"' + escapeHtml(b.label || b.code) + '" is back online.');
+      }
+      liveBuses.set(b.code, Object.assign({ launched: prev.launched }, b));
+    }
+    upsertLiveMarker(b.code, liveBuses.get(b.code));
+  });
+  [...liveBuses.keys()].forEach(code => {
+    if (seen.has(code)) return;
+    liveBuses.delete(code);
+    if (liveMarkers[code]) { liveMarkers[code].remove(); delete liveMarkers[code]; }
+  });
+}
+
+function renderLiveDetails(lb) {
+  const status = liveStatus(lb);
+  const eta = lb.etaMins == null ? '—' : formatEta(lb.etaMins);
+  const kmh = lb.pos && lb.pos.speed != null ? Math.round(lb.pos.speed * 3.6) : '—';
+  const hdg = lb.pos && lb.pos.heading != null ? Math.round(lb.pos.heading) + '°' : '—';
+  const acc = lb.pos && lb.pos.accuracy != null ? '±' + Math.round(lb.pos.accuracy) + ' m' : '—';
+  busDetailsEl.innerHTML = `
+    <div class="dg-item"><div class="dg-label">Device</div><div class="dg-value">${escapeHtml(lb.label || lb.code)}</div></div>
+    <div class="dg-item"><div class="dg-label">Status</div><div class="dg-value"><span class="dot" style="background:${status.color}"></span>${status.label}</div></div>
+    <div class="dg-item"><div class="dg-label">Device code</div><div class="dg-value num">${escapeHtml(lb.code)}</div></div>
+    <div class="dg-item"><div class="dg-label">Last seen</div><div class="dg-value">${lb.last_seen ? timeAgo(lb.last_seen) : '—'}</div></div>
+    <div class="dg-item"><div class="dg-label">Coordinates</div><div class="dg-value num">${lb.pos ? lb.pos.lat.toFixed(5) + ', ' + lb.pos.lng.toFixed(5) : '—'}</div></div>
+    <div class="dg-item"><div class="dg-label">Speed</div><div class="dg-value num">${kmh} km/h</div></div>
+    <div class="dg-item"><div class="dg-label">Heading</div><div class="dg-value num">${hdg}</div></div>
+    <div class="dg-item"><div class="dg-label">Accuracy</div><div class="dg-value num">${acc}</div></div>
+    <div class="dg-item"><div class="dg-label">ETA to school</div><div class="dg-value num">${eta}</div></div>
+    <div class="dg-item wide"><div class="dg-label">Note</div><div class="dg-value">Runs on the driver's phone GPS — not on a fixed school route.</div></div>
+  `;
+  if (detailsStatusBadgeEl) {
+    detailsStatusBadgeEl.textContent = status.label;
+    detailsStatusBadgeEl.style.background = status.color + '22';
+    detailsStatusBadgeEl.style.color = status.color;
+  }
+  if (capacityTextEl) capacityTextEl.textContent = '—';
+  if (capacityBarEl) capacityBarEl.style.width = '0%';
+}
+
+/* Add Bus modal */
+
+function fillSwatches() {
+  if (!swatchesEl) return;
+  swatchesEl.innerHTML = SWATCH_COLORS.map((c, i) =>
+    `<button type="button" class="swatch${i === swatchSel ? ' active' : ''}" data-i="${i}" style="background:${c}" aria-label="Colour ${i + 1}"></button>`
+  ).join('');
+  swatchesEl.querySelectorAll('.swatch').forEach(b => {
+    b.addEventListener('click', () => { swatchSel = +b.dataset.i; fillSwatches(); });
+  });
+}
+
+function openAddBusModal() {
+  pairing = null;
+  modalStepForm.hidden = false;
+  modalStepDone.hidden = true;
+  if (modalErrEl) modalErrEl.textContent = '';
+  fillSwatches();
+  modalEl.hidden = false;
+  if (busLabelEl) busLabelEl.focus();
+}
+
+function closeAddBusModal() { if (modalEl) modalEl.hidden = true; }
+
+async function handleRegister() {
+  const label = (busLabelEl.value || '').trim();
+  if (!label) { if (busLabelEl) busLabelEl.focus(); return; }
+  if (modalErrEl) modalErrEl.textContent = '';
+  registerBusBtn.disabled = true;
+  try {
+    const res = await fetch(API_BASE + '/api/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label, color: SWATCH_COLORS[swatchSel] })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Registration failed');
+    pairing = data;
+    if (pairCodeEl) pairCodeEl.textContent = data.code.slice(0, 3) + ' ' + data.code.slice(3);
+    if (pairQREl) {
+      if (data.qrDataURL) { pairQREl.src = data.qrDataURL; pairQREl.style.display = ''; }
+      else pairQREl.style.display = 'none';
+    }
+    modalStepForm.hidden = true;
+    modalStepDone.hidden = false;
+    pollLiveBuses();
+  } catch (e) {
+    if (modalErrEl) modalErrEl.textContent = (e && e.message) || 'Failed to register device.';
+  } finally {
+    registerBusBtn.disabled = false;
+  }
+}
+
+async function copyPairLink() {
+  if (!pairing) return;
+  const url = location.origin + (pairing.qrPath || ('/live.html?c=' + pairing.code + '&t=' + pairing.token));
+  try {
+    await navigator.clipboard.writeText(url);
+    if (copyLinkBtn) {
+      copyLinkBtn.textContent = 'Copied!';
+      setTimeout(() => { copyLinkBtn.textContent = 'Copy link'; }, 1500);
+    }
+  } catch (e) {}
+}
+
+function initLiveUI() {
+  if (addBusBtnEl) addBusBtnEl.addEventListener('click', openAddBusModal);
+  if (modalCloseEl) modalCloseEl.addEventListener('click', closeAddBusModal);
+  if (modalDoneBtn) modalDoneBtn.addEventListener('click', closeAddBusModal);
+  if (copyLinkBtn) copyLinkBtn.addEventListener('click', copyPairLink);
+  if (registerBusBtn) registerBusBtn.addEventListener('click', handleRegister);
+  if (busLabelEl) busLabelEl.addEventListener('keydown', e => { if (e.key === 'Enter') handleRegister(); });
+  if (modalEl) modalEl.addEventListener('click', e => { if (e.target === modalEl) closeAddBusModal(); });
+  pollLiveBuses();
+  livePollTimer = setInterval(pollLiveBuses, LIVE_POLL_MS);
+}
+
 function init() {
   initClock();
   populateAttSelect();
@@ -927,6 +1200,7 @@ function init() {
   updateCharts();
   bindRosterFilters();
   initLegend();
+  initLiveUI();
 
   // select first bus by default
   if (BUSES.length > 0 && !state.selectedBusId) {
