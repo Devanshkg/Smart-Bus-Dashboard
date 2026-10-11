@@ -76,6 +76,7 @@ let liveMarkers = {};      // device code -> L.Marker
 let livePollTimer = null;
 let swatchSel = 0;
 let pairing = null;        // last registered device { code, token, label, color, qrPath }
+let forceLiveRerender = false; // bypass renderLiveDetails' focused-dropdown guard
 
 function initClock() {
   updateClock();
@@ -223,12 +224,18 @@ function renderBusList() {
       card.type = 'button';
       card.className = 'bus-item' + (active ? ' selected' : '');
       const st = liveStatus(bus);
+      const ri = bus.pos && !bus.offline ? liveRouteInfo(bus) : null;
+      const eta = ri ? formatEta(ri.etaSchoolMins)
+        : (bus.pos && !bus.offline && bus.etaMins != null ? formatEta(bus.etaMins) : (bus.waiting ? 'pairing…' : '—'));
+      const stopLine = ri
+        ? '<span>Next:</span> ' + escapeHtml(ri.nextStop.n)
+        : '<span>Last seen:</span> ' + (bus.last_seen ? timeAgo(bus.last_seen) : '—');
       card.innerHTML = `
         <span class="dot live-dot${bus.waiting ? ' wait' : ''}" style="background:${bus.color || '#2563EB'}"></span>
         <div class="bi-main">
-          <div class="bi-top"><strong>${escapeHtml(bus.label || bus.code)}</strong><span class="bi-eta">${bus.pos && !bus.offline && bus.etaMins != null ? formatEta(bus.etaMins) : (bus.waiting ? 'pairing…' : '—')}</span></div>
-          <div class="bi-sub">${escapeHtml(bus.code)} · <b style="color:${st.color}">${st.label}</b></div>
-          <div class="bi-stop"><span>Last seen:</span> ${bus.last_seen ? timeAgo(bus.last_seen) : '—'}</div>
+          <div class="bi-top"><strong>${escapeHtml(bus.label || bus.code)}</strong><span class="bi-eta">${eta}</span></div>
+          <div class="bi-sub">${escapeHtml(bus.code)} · <b style="color:${st.color}">${st.label}</b>${ri ? ' · ' + escapeHtml(ri.route.code) : ''}</div>
+          <div class="bi-stop">${stopLine}</div>
         </div>
       `;
       card.addEventListener('click', () => selectBus(bus.code));
@@ -445,6 +452,11 @@ function selectBus(busId) {
   if (!bus && !isLive) return;
   state.selectedBusId = busId;
   if (bus) state.selectedRouteId = bus.routeId;
+  else if (isLive) {
+    const lb = liveBuses.get(busId);
+    const rid = lb && lb.route_id != null && lb.route_id !== '' ? Number(lb.route_id) : null;
+    state.selectedRouteId = rid;
+  }
   renderBusList();
   renderRouteChips();
   renderBusDetails();
@@ -868,6 +880,15 @@ function populateAttSelect() {
 }
 
 function updateAttendance() {
+  const lb = typeof state.selectedBusId === 'string' ? liveBuses.get(state.selectedBusId) : null;
+  if (lb) {
+    const ri = lb.pos && !lb.offline ? liveRouteInfo(lb) : null;
+    const ac = ri ? liveAttendanceCounts(lb, ri) : null;
+    if (attPresentEl) attPresentEl.textContent = ac ? ac.present : '0';
+    if (attAbsentEl) attAbsentEl.textContent = ac ? ac.absent : '0';
+    if (attExpectedEl) attExpectedEl.textContent = ac ? ac.expected : '0';
+    return;
+  }
   const bus = getBus(state.selectedBusId);
   if (!bus) {
     if (typeof state.selectedBusId === 'string') {
@@ -1021,15 +1042,121 @@ function liveBusIcon(code, lb, status, selected) {
 }
 
 function liveBusTip(lb, status) {
-  const eta = lb.etaMins == null ? '—' : formatEta(lb.etaMins);
-  const sub = lb.waiting ? 'waiting for first fix'
-    : (lb.offline ? 'offline · last seen ' + timeAgo(lb.last_seen) : 'ETA ' + eta);
-  return `${lb.label} (${lb.code}) · ${status.label} · ${sub}`;
+  if (lb.waiting) return lb.label + ' (' + lb.code + ') · ' + status.label + ' · waiting for first fix';
+  const ri = lb.offline ? null : liveRouteInfo(lb);
+  const eta = ri ? formatEta(ri.etaSchoolMins)
+    : (lb.etaMins == null ? '—' : formatEta(lb.etaMins));
+  const sub = lb.offline ? 'offline · last seen ' + timeAgo(lb.last_seen)
+    : (ri ? 'ETA ' + eta + ' · next: ' + ri.nextStop.n : 'ETA ' + eta);
+  return lb.label + ' (' + lb.code + ') · ' + status.label + ' · ' + sub;
+}
+
+/* Route assignment helpers — snap a live GPS fix onto one of the six routes and
+   derive stop-based progress, next-stop ETA, and on-board attendance. */
+
+function polylineGeom(lls) {
+  const segLens = [], dists = [0];
+  for (let i = 1; i < lls.length; i++) {
+    segLens.push(distanceMeters(lls[i - 1], lls[i]));
+    dists.push(dists[i - 1] + segLens[segLens.length - 1]);
+  }
+  return { segLens, dists, total: dists[lls.length - 1] || 0 };
+}
+
+function projectOntoPolyline(lls, p) {
+  const geom = polylineGeom(lls);
+  if (geom.segLens.length === 0) return { t: 0, segIndex: 0, segT: 0, distAlong: 0, geom };
+  let bestSeg = 0, bestT = 0, bestD = Infinity;
+  for (let i = 0; i < geom.segLens.length; i++) {
+    const a = lls[i], b = lls[i + 1];
+    const segLen = geom.segLens[i];
+    let t = 0;
+    if (segLen > 1e-9) {
+      t = ((p[0] - a[0]) * (b[0] - a[0]) + (p[1] - a[1]) * (b[1] - a[1])) / (segLen * segLen);
+    }
+    const tc = Math.max(0, Math.min(1, t));
+    const d = distanceMeters(p, [a[0] + (b[0] - a[0]) * tc, a[1] + (b[1] - a[1]) * tc]);
+    if (d < bestD) { bestD = d; bestSeg = i; bestT = tc; }
+  }
+  const distAlong = geom.dists[bestSeg] + geom.segLens[bestSeg] * bestT;
+  return {
+    t: geom.total > 0 ? Math.max(0, Math.min(1, distAlong / geom.total)) : 0,
+    segIndex: bestSeg, segT: bestT, distAlong, geom
+  };
+}
+
+function liveCurrentSpeed(lb, tcol, useLive) {
+  if (useLive && lb && lb.pos && Number.isFinite(lb.pos.speed) &&
+      lb.pos.speed > 0.5 && lb.pos.speed < 40) return lb.pos.speed;
+  if (tcol === 'red') return TRAFFIC_SPEED.red;
+  if (tcol === 'yellow') return TRAFFIC_SPEED.yellow;
+  return TRAFFIC_SPEED.green;
+}
+
+function routeEtaMins(lb, ar, proj) {
+  let secs = 0;
+  for (let i = 0; i < proj.geom.segLens.length; i++) {
+    const overlap = Math.max(0, Math.min(proj.geom.dists[i + 1], proj.geom.total) - Math.max(proj.geom.dists[i], proj.distAlong));
+    if (overlap <= 0) continue;
+    const tcol = ar.traffic ? ar.traffic[i] : 'green';
+    secs += overlap / liveCurrentSpeed(lb, tcol, i === proj.segIndex);
+  }
+  return secs / 60;
+}
+
+function liveRouteInfo(lb) {
+  const rid = lb && lb.route_id != null && lb.route_id !== '' ? Number(lb.route_id) : null;
+  const route = rid ? getRoute(rid) : null;
+  if (!route || !lb.pos) return null;
+  const ar = getActiveRoute(route);
+  const lls = ar.stops.map(s => s.ll);
+  const proj = projectOntoPolyline(lls, [lb.pos.lat, lb.pos.lng]);
+  const lastIdx = lls.length - 1;
+  const nextIdx = proj.t >= 1 ? lastIdx : Math.min(proj.segIndex + 1, lastIdx);
+  const nextDist = Math.max(0, proj.geom.dists[nextIdx] - proj.distAlong);
+  const curTcol = ar.traffic ? ar.traffic[Math.min(proj.segIndex, lastIdx - 1)] : 'green';
+  let passed = 0;
+  for (let i = 0; i < ar.stops.length; i++) {
+    if (proj.t >= stopProgressForStop(ar, i)) passed++;
+  }
+  return {
+    route, ar, lls,
+    t: proj.t, segIndex: proj.segIndex,
+    snapped: interpolateAlongPolyline(lls, proj.t).point,
+    nextStop: ar.stops[nextIdx],
+    xNextStop: nextIdx,
+    passedStops: Math.min(passed, ar.stops.length),
+    totalStops: ar.stops.length,
+    etaNextMins: nextDist > 0 ? nextDist / liveCurrentSpeed(lb, curTcol, true) / 60 : 0,
+    etaSchoolMins: routeEtaMins(lb, ar, proj),
+    pct: Math.round(proj.t * 100)
+  };
+}
+
+function liveMarkerPos(lb) {
+  const info = lb.pos ? liveRouteInfo(lb) : null;
+  const p = info ? info.snapped : (lb.pos ? [lb.pos.lat, lb.pos.lng] : null);
+  return p ? L.latLng(p[0], p[1]) : null;
+}
+
+function liveAttendanceCounts(lb, info) {
+  if (!info) return null;
+  let present = 0, absent = 0, expected = 0;
+  BUSES.forEach(b => {
+    if (b.routeId !== info.route.id) return;
+    (b.students || []).forEach(s => {
+      if (s.includes('|absent')) { absent++; return; }
+      const stopIdx = parseInt(s.split('|')[2] || '0', 10);
+      if (info.t >= stopProgressForStop(info.ar, stopIdx)) present++;
+      else expected++;
+    });
+  });
+  return { present, absent, expected, total: present + absent + expected };
 }
 
 function upsertLiveMarker(code, lb) {
   if (!leafletMap) return;
-  const ll = lb.pos ? L.latLng(lb.pos.lat, lb.pos.lng) : null;
+  const ll = liveMarkerPos(lb);
   const status = liveStatus(lb);
   const selected = state.selectedBusId === code;
   const markerKey = status.label + (selected ? '1' : '0');
@@ -1084,22 +1211,60 @@ async function pollLiveBuses() {
 
 function renderLiveDetails(lb) {
   const status = liveStatus(lb);
+  const routeSel = busDetailsEl.querySelector('#liveRouteSelect');
+  if (forceLiveRerender) forceLiveRerender = false;
+  else if (routeSel && document.activeElement === routeSel) return; // don't clobber an open dropdown
+
   const eta = lb.etaMins == null ? '—' : formatEta(lb.etaMins);
   const kmh = lb.pos && lb.pos.speed != null ? Math.round(lb.pos.speed * 3.6) : '—';
   const hdg = lb.pos && lb.pos.heading != null ? Math.round(lb.pos.heading) + '°' : '—';
   const acc = lb.pos && lb.pos.accuracy != null ? '±' + Math.round(lb.pos.accuracy) + ' m' : '—';
-  busDetailsEl.innerHTML = `
-    <div class="dg-item"><div class="dg-label">Device</div><div class="dg-value">${escapeHtml(lb.label || lb.code)}</div></div>
-    <div class="dg-item"><div class="dg-label">Status</div><div class="dg-value"><span class="dot" style="background:${status.color}"></span>${status.label}</div></div>
-    <div class="dg-item"><div class="dg-label">Device code</div><div class="dg-value num">${escapeHtml(lb.code)}</div></div>
-    <div class="dg-item"><div class="dg-label">Last seen</div><div class="dg-value">${lb.last_seen ? timeAgo(lb.last_seen) : '—'}</div></div>
-    <div class="dg-item"><div class="dg-label">Coordinates</div><div class="dg-value num">${lb.pos ? lb.pos.lat.toFixed(5) + ', ' + lb.pos.lng.toFixed(5) : '—'}</div></div>
-    <div class="dg-item"><div class="dg-label">Speed</div><div class="dg-value num">${kmh} km/h</div></div>
-    <div class="dg-item"><div class="dg-label">Heading</div><div class="dg-value num">${hdg}</div></div>
-    <div class="dg-item"><div class="dg-label">Accuracy</div><div class="dg-value num">${acc}</div></div>
-    <div class="dg-item"><div class="dg-label">ETA to school</div><div class="dg-value num">${eta}</div></div>
-    <div class="dg-item wide"><div class="dg-label">Note</div><div class="dg-value">Runs on the driver's phone GPS — not on a fixed school route.</div></div>
-  `;
+  const online = !!(lb.pos && !lb.offline);
+  const ri = online ? liveRouteInfo(lb) : null;
+  const assigned = ri || (lb.route_id != null && lb.route_id !== '');
+
+  const routeOptions = ['', ...ROUTES.map(r => String(r.id))].map(v => {
+    const r = v === '' ? null : getRoute(Number(v));
+    const selected = lb.route_id != null && String(lb.route_id) === v ? ' selected' : '';
+    return `<option value="${v}"${selected}>${r ? r.code + ' · ' + r.name : 'No route'}</option>`;
+  }).join('');
+
+  const dg = (l, v, cls) => {
+    const itemCls = cls === 'wide' ? ' wide' : '';
+    const valCls = cls === 'num' ? ' num' : '';
+    return `<div class="dg-item${itemCls}"><div class="dg-label">${l}</div><div class="dg-value${valCls}">${v}</div></div>`;
+  };
+  const rows = [];
+  rows.push(dg('Device', escapeHtml(lb.label || lb.code)));
+  rows.push(dg('Status', `<span class="dot" style="background:${status.color}"></span>${status.label}`));
+  rows.push(dg('Device code', escapeHtml(lb.code), 'num'));
+  rows.push(dg('Route', `<select id="liveRouteSelect" class="mini-select">${routeOptions}</select>`));
+  if (ri) {
+    rows.push(dg('Next stop', escapeHtml(ri.nextStop.n)));
+    rows.push(dg('Progress', ri.pct + '% · ' + ri.passedStops + ' of ' + ri.totalStops + ' stops reached'));
+    rows.push(dg('ETA to next stop', formatEta(ri.etaNextMins), 'num'));
+    rows.push(dg('ETA to school', formatEta(ri.etaSchoolMins), 'num'));
+    const ac = liveAttendanceCounts(lb, ri);
+    rows.push(dg('Students', `${ac.present} on board · ${ac.expected} expected · ${ac.absent} absent`, 'num'));
+  } else {
+    rows.push(dg('Next stop', '—'));
+    rows.push(dg('ETA to school', online || !assigned ? eta : '—', 'num'));
+  }
+  rows.push(dg('Last seen', lb.last_seen ? timeAgo(lb.last_seen) : '—'));
+  rows.push(dg('Coordinates', lb.pos ? lb.pos.lat.toFixed(5) + ', ' + lb.pos.lng.toFixed(5) : '—', 'num'));
+  rows.push(dg('Speed', kmh + ' km/h', 'num'));
+  rows.push(dg('Heading', hdg, 'num'));
+  rows.push(dg('Accuracy', acc, 'num'));
+  rows.push(dg('Note',
+    ri || assigned
+      ? 'Driver&rsquo;s phone GPS — live fix snapped onto ' + (ri ? escapeHtml(ri.route.name) + ' (R' + ri.route.id + ')' : 'the assigned route') + '.'
+      : 'Runs on the driver&rsquo;s phone GPS — not on a fixed school route.', 'wide'));
+
+  busDetailsEl.innerHTML = rows.join('');
+  const rs = busDetailsEl.querySelector('#liveRouteSelect');
+  if (rs) rs.value = String(lb.route_id || '');
+  if (rs) rs.addEventListener('change', () => assignLiveRoute(lb.code, rs.value === '' ? null : String(rs.value)));
+
   if (detailsStatusBadgeEl) {
     detailsStatusBadgeEl.textContent = status.label;
     detailsStatusBadgeEl.style.background = status.color + '22';
@@ -1107,6 +1272,45 @@ function renderLiveDetails(lb) {
   }
   if (capacityTextEl) capacityTextEl.textContent = '—';
   if (capacityBarEl) capacityBarEl.style.width = '0%';
+}
+
+async function assignLiveRoute(code, routeId) {
+  const cur = liveBuses.get(code);
+  const prev = cur && cur.route_id ? String(cur.route_id) : null;
+  if (cur) cur.route_id = routeId || null; // optimistic update while the API round-trips
+  let applied = false;
+  try {
+    const res = await fetch(API_BASE + '/api/assign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, routeId: routeId || null })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      pushAlert('warn', 'Could not assign route: ' + (data.error || 'server error'));
+    } else {
+      applied = true;
+      const rid = data.routeId || null;
+      if (cur) cur.route_id = rid;
+      const route = rid ? getRoute(Number(rid)) : null;
+      pushAlert('info', '"' + escapeHtml((cur && cur.label) || code) + '" assigned to ' +
+        (route ? route.code + ' (' + route.name + ')' : 'no route') + '.');
+    }
+  } catch (e) {
+    pushAlert('warn', 'Could not assign route.');
+  }
+  if (!applied && cur) cur.route_id = prev;
+  forceLiveRerender = true;
+  if (state.selectedBusId === code) {
+    state.selectedRouteId = cur && cur.route_id ? Number(cur.route_id) : null;
+    renderRouteChips();
+  }
+  renderBusList();
+  renderLiveDetails(liveBuses.get(code));
+  updateAttendance();
+  updateSummary();
+  drawMap();
+  pollLiveBuses();
 }
 
 /* Add Bus modal */

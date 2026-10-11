@@ -49,7 +49,7 @@ exports.handler = async (event) => {
   if (event.httpMethod !== 'GET') return fail(405, 'Method not allowed');
 
   const { rows } = await db().query(`
-    SELECT d.code, d.label, d.color, d.created_at, d.last_seen,
+    SELECT d.code, d.label, d.color, d.route_id, d.created_at, d.last_seen,
            (d.last_seen IS NULL OR d.last_seen < now() - interval '${OFFLINE_AFTER_S} seconds') AS offline,
            p.lat, p.lng, p.heading, p.speed, p.accuracy, p.ts AS pos_ts
     FROM live_devices d
@@ -65,6 +65,7 @@ exports.handler = async (event) => {
       code: r.code,
       label: r.label,
       color: r.color,
+      route_id: r.route_id || null,
       created_at: r.created_at,
       last_seen: r.last_seen,
       offline: r.offline,

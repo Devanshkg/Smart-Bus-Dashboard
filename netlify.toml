@@ -16,3 +16,8 @@
   from = "/api/buses"
   to = "/.netlify/functions/buses"
   status = 200
+
+[[redirects]]
+  from = "/api/assign"
+  to = "/.netlify/functions/assign"
+  status = 200
