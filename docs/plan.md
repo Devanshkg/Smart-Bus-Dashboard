@@ -10,7 +10,7 @@ real-time Google Maps tracking and a "Add Bus" device-pairing flow.
 
 ### Stack
 - **Static site**: `index.html`, `styles.css`, `data.js`, `app.js` — no build step, no server.
-- **Map**: Leaflet 1.9.4 + CARTO/OSM tiles (light basemap), ~Bengaluru area.
+- **Map**: Leaflet 1.9.4 + CARTO/OSM tiles (light basemap), ~Bengaluru area. Google Maps variant: `index_g.html`.
 - **Charts**: Chart.js 4.4 doughnut for attendance.
 - **Deploy**: static drop on Netlify (`netlify.toml`, `publish = "."`).
 
@@ -54,8 +54,8 @@ real-time Google Maps tracking and a "Add Bus" device-pairing flow.
 > Status: **Phase 1 (backend) and Phases 3–5 (Add Bus, live.html, dashboard live rendering) are built and verified.**
 > **Route assignment for live buses** (assign a paired device to one of the six school routes → stop-based
 > ETA, stop progress, snapped marker, on-board attendance) is also built and verified.
-> The Google Maps migration is **deferred** pending a Google API key; live tracking runs on the existing
-> Leaflet renderer.
+> A **Google Maps variant** (`index_g.html`) is built as an opt-in, key-bearing page alongside the default
+> free Leaflet dashboard; see Phase 2.
 
 ### Decisions (confirmed)
 - **Backend**: Netlify Functions + Neon Postgres (Neon wired via MCP; project `broad-haze-02751607`,
@@ -64,8 +64,10 @@ real-time Google Maps tracking and a "Add Bus" device-pairing flow.
   app cannot read a phone's Find My position. The buildable equivalent users asked for is the **phone's
   own browser GPS** (`live.html`) — which is also more accurate than the Find My network. The device must
   keep the tab open and the screen on while running.
-- **Map**: Google Maps swap deferred until a `GMAPS_JS_KEY` exists. Live buses use the existing Leaflet
-  map; the renderer swap is a self-contained later change (Part 4).
+- **Map**: the default dashboard (`index.html`) stays on **Leaflet + CARTO/OSM** (free forever, no key).
+  A separate **Google Maps variant** (`index_g.html`) renders the same dashboard on Google Maps via
+  `google-maps-adapter.js`; it carries the `GOOGLE_MAPS_API_KEY` placeholder and is the **only** `_g` file.
+  With no valid key it degrades gracefully (banner over the map, rest of the dashboard still works).
 - **Live-bus scope**: marker + card + ETA to school (Google Directions when a key exists; otherwise
   straight-line distance × ~9 m/s fallback). Unassigned live buses stay simple (no attendance/traffic/
   suggestion machinery). **Once assigned to a route** (Phase 5b) the live bus inherits stop-based ETA,
@@ -91,9 +93,9 @@ real-time Google Maps tracking and a "Add Bus" device-pairing flow.
 
 ### Phase 0 — Prerequisites (user-side; unblocks Google Maps + Roads/Directions ETA)
 - Google Cloud Console: API key with **Maps JavaScript**, **Directions**, **Roads** enabled.
-  - JS key (`GMAPS_JS_KEY`): restrict by HTTP referrer (Netlify domain).
-  - Server key (`GMAPS_KEY`): restrict by IP; used only inside Netlify Functions.
-- Env vars on Netlify: `GMAPS_KEY`, `GMAPS_JS_KEY`, `DATABASE_URL` (Neon pooled).
+  - JS key for the Google variant → paste at `GOOGLE_MAPS_API_KEY` in `index_g.html` (restrict by referrer).
+  - Server key (`GMAPS_KEY`): restrict by IP; used only inside Netlify Functions (Roads/Directions).
+- Env vars on Netlify: `GMAPS_KEY`, `DATABASE_URL` (Neon pooled).
 - Without these the dashboard ships on Leaflet with the distance-based ETA fallback (current state).
 
 ### Phase 1 — Backend (Netlify Functions + Neon) — ✅ built & verified
@@ -131,18 +133,29 @@ real-time Google Maps tracking and a "Add Bus" device-pairing flow.
 - `netlify.toml`: `functions = "netlify/functions"`, `publish = "."`, `/api/*` redirects.
 - Smoke-tested live against Neon: 200/400/401/404/405 paths, offline/waiting flags, ETA fallback.
 
-### Phase 2 — Google Maps migration — ⏸ deferred (no key)
-- `index.html`: replace Leaflet CSS/JS with the Maps JS loader; keep Chart.js, `data.js`, `app.js`.
-- Rewrite the map section of `app.js` to one Google-native renderer:
-  - Traffic-coloured `google.maps.Polyline` per route segment (same colours/legend).
-  - Stops → `google.maps.Circle` + `InfoWindow` (same boarding/ETA content as today).
-  - Buses → numbered custom markers (`AdvancedMarkerElement` if supported, else `Marker`;
-    custom pin), tooltip; selected = larger + name label.
-  - Alternate routes → dashed `Polyline` via `icons` (`repeat: '20px'`).
-  - 🏫 school marker; direction-arrow overlays; `fitBounds`/`panTo` replace `flyTo`.
-  - Graceful banner if `GMAPS_JS_KEY` missing/invalid; page still renders.
-- Simulated buses keep today's behaviour (traffic, delays, recycling) — renderer only.
-- **Live bus markers** (Leaflet today) must move to the Google renderer too (live card/details stay).
+### Phase 2 — Google Maps variant — ✅ built (needs a key to render)
+- **Decision (user-deferred)**: keep **Leaflet as the default free dashboard** and add **Google Maps as an
+  opt-in variant**, rather than migrating wholesale. Rationale: Leaflet + CARTO/OSM tiles are MIT/free with
+  no key or billing ever; Google Maps is freemium (requires a billing-enabled key, per-load pricing beyond
+  the free credit). The variant keeps Google Maps one page away for anyone who supplies a key.
+- `index_g.html` — new; the **only** `_g`-renamed file, i.e. the only file containing the literal
+  `GOOGLE_MAPS_API_KEY` placeholder. Body is `index.html` minus the Leaflet `<link>`/`<script>`; loads
+  `google-maps-adapter.js`, Chart.js, `data.js`, `app.js`, then the Maps JS loader
+  (`…/maps/api/js?key=GOOGLE_MAPS_API_KEY&v=weekly&loading=async`). A `#gmapsNote` banner over the map
+  explains the missing key, hides once the API is ready, and switches to an error style on `gm_authFailure`.
+- `google-maps-adapter.js` — new; a renderer shim that exposes the subset of the Leaflet API `app.js`
+  uses (`L.map/marker/divIcon/circleMarker/polyline/featureGroup/latLng` + `addTo/remove/setLatLng/
+  bindTooltip/setTooltipContent/bindPopup/on('click')`) on top of the **Google Maps JavaScript API**, so
+  `app.js` needs **zero changes**. Rich HTML markers are drawn with `google.maps.OverlayView` (no Map ID
+  required); routes/stops/alternate lines use `Polyline` (dashed via `icons`); a light `styles` array
+  approximates the CARTO aesthetic. If the API is missing/rejected every layer call becomes a no-op
+  (`window.__gmapsFailed`), so the dashboard still renders. The adapter contains **no key**.
+- `styles.css` — `.map-note` banner + Google renderer rules (`.gm-marker`, `.gm-tip`, `.gm-tip-permanent`,
+  `.gm-pop`, `.stop-dot`); the default `.gm-tip` look uses `:where()` so the app's `.bus-tip`/
+  `.school-label` classes win.
+- `index.html` / `app.js` stay **untouched** so the free path cannot regress. Verified: `index.html`
+  (Leaflet) regression pass clean, 0 console errors; `index_g.html` keyless loads with the banner and
+  no adapter exceptions (dashboard, list, details, charts all render).
 
 ### Phase 3 — "Add Bus" + pairing (dashboard) — ✅ built & verified
 - "Add Bus" button in the Buses panel head → modal: bus label (e.g. "Bus 7 · driver phone"), colour swatch.
@@ -204,8 +217,9 @@ real-time Google Maps tracking and a "Add Bus" device-pairing flow.
   ~9 m/s if Directions is skipped/absent.
 - **Security**: device `token` authorizes only that device's `report`; API keys stay server-side (JS key
   referrer-restricted); `GET /api/buses` is public (dashboard view).
-- **Deploy env**: Netlify must get `DATABASE_URL` (Neon pooled) + optional `GMAPS_KEY`/`GMAPS_JS_KEY`;
-  package.json holds `pg` + `qrcode` (function deps). HTTPS required for phone geolocation.
+- **Deploy env**: Netlify must get `DATABASE_URL` (Neon pooled) + optional `GMAPS_KEY` (server Roads/Directions);
+  the Google variant's JS key is set at `GOOGLE_MAPS_API_KEY` in `index_g.html`; package.json holds `pg` +
+  `qrcode` (function deps). HTTPS required for phone geolocation.
 
 ---
 
@@ -221,6 +235,8 @@ real-time Google Maps tracking and a "Add Bus" device-pairing flow.
 | `migrations/001_live_tracking.sql` | new — live_devices / live_positions schema |
 | `migrations/002_route_assignment.sql` | new — `route_id TEXT` on live_devices (idempotent) |
 | `index.html` | Add Bus button + pairing modal (img QR) |
+| `index_g.html` | new — Google Maps variant; ONLY file with the `GOOGLE_MAPS_API_KEY` placeholder |
+| `google-maps-adapter.js` | new — Leaflet-API shim backed by Google Maps (no key inside) |
 | `live.html` | new — device geolocation sender |
 | `tools/dev-server.js` | new — local harness (static + `/api/*` handlers), `npm run dev` |
 | `app.js` | Add Bus modal, live cards/markers/details, 2 s poll, offline alerts, route assignment |
@@ -238,5 +254,6 @@ real-time Google Maps tracking and a "Add Bus" device-pairing flow.
    offline) + regression pass + docs. ✅
 6. Phase 5b — route assignment for live buses: migration `002`, `/api/assign`, dashboard route select,
    snapped marker, stop-based ETA/progress/attendance. ✅
-7. Phase 2 — Google Maps migration — **deferred** until a `GMAPS_JS_KEY`/`GMAPS_KEY` is provided.
+7. Phase 2 — Google Maps **variant**: `google-maps-adapter.js` + `index_g.html` (key placeholder) +
+   Google renderer CSS. Leaflet default untouched. ✅ built (rendering needs a real key).
 8. Real-phone run via `netlify dev --live` (HTTPS) — pending user.

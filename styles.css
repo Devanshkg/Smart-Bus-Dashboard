@@ -484,3 +484,49 @@ a { color: var(--blue); }
 .pair-qr { display: grid; place-items: center; margin-bottom: 4px; }
 .pair-qr img { border: 1px solid var(--line); border-radius: 10px; padding: 6px; background: #fff; max-width: 210px; height: auto; }
 .actions.center { justify-content: center; }
+
+/* ---------- Google Maps variant (index_g.html) ---------- */
+.map-note {
+  position: absolute; left: 12px; top: 12px; z-index: 950; max-width: 380px;
+  background: rgba(255, 255, 255, .97);
+  border: 1px solid var(--line); border-left: 4px solid var(--amber);
+  border-radius: 10px; box-shadow: var(--shadow);
+  padding: 9px 34px 9px 12px; font-size: 12.6px; line-height: 1.45; color: var(--text);
+}
+.map-note[hidden] { display: none; }
+.map-note.err { border-left-color: var(--red); background: #fff6f6; }
+.map-note code { background: #eef2f7; border-radius: 4px; padding: 0 4px; font-size: 12px; }
+.map-note-x {
+  position: absolute; top: 4px; right: 6px; border: 0; background: none;
+  font-size: 18px; line-height: 1; cursor: pointer; color: var(--muted);
+}
+
+/* DOM markers drawn via google.maps.OverlayView */
+.gm-marker { will-change: transform; }
+.gm-tip {
+  position: absolute; left: 50%; bottom: calc(100% + 10px); transform: translateX(-50%);
+  display: none; pointer-events: none; white-space: nowrap; z-index: 900;
+}
+.gm-tip.show, .gm-tip.gm-tip-permanent { display: block; }
+/* Default tooltip look; :where() keeps specificity 0 so .bus-tip/.school-label win. */
+:where(.gm-tip) {
+  background: #fff; color: var(--text); border: 1.5px solid var(--line);
+  font-weight: 700; font-size: 12.4px; line-height: 1.3;
+  padding: 4px 9px; border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(10, 30, 70, .2);
+}
+.gm-pop {
+  position: absolute; left: 50%; bottom: calc(100% + 12px); transform: translateX(-50%);
+  min-width: 170px; background: #fff; border: 1px solid var(--line);
+  border-radius: 12px; box-shadow: 0 8px 24px rgba(10, 30, 70, .18);
+  padding: 11px 14px; font-size: 13.6px; line-height: 1.45; z-index: 1000;
+}
+.gm-pop[hidden] { display: none; }
+.gm-pop::after {
+  content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  border: 7px solid transparent; border-top-color: #fff;
+}
+.stop-dot {
+  display: block; width: 12px; height: 12px; border-radius: 50%;
+  border: 3px solid #111827; background: #f8fafc; box-sizing: border-box;
+}

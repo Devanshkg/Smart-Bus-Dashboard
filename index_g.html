@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stonehill Smart Bus Dashboard · Google Maps</title>
+  <meta name="description" content="Live school transportation dashboard for Stonehill International School — buses, routes, traffic, ETAs and student attendance (Google Maps variant)." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚌</text></svg>" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">🚌</div>
+      <div class="brand-text">
+        <h1>Stonehill Smart Bus Dashboard</h1>
+        <p>Stonehill International School · Transport Office</p>
+      </div>
+    </div>
+    <div class="live-pill"><span class="live-dot"></span> LIVE</div>
+    <div class="clock">
+      <div id="clockTime">--:--:--</div>
+      <div id="clockDate">—</div>
+    </div>
+  </header>
+
+  <section class="summary" aria-label="Fleet summary">
+    <div class="stat-card">
+      <div class="stat-label">Total Buses</div>
+      <div class="stat-value" id="statTotal">6</div>
+    </div>
+    <div class="stat-card ok">
+      <div class="stat-label">Buses On Time</div>
+      <div class="stat-value" id="statOnTime">0</div>
+    </div>
+    <div class="stat-card warn">
+      <div class="stat-label">Delayed Buses</div>
+      <div class="stat-value" id="statDelayed">0</div>
+    </div>
+    <div class="stat-card info">
+      <div class="stat-label">Students Present</div>
+      <div class="stat-value" id="statPresent">0</div>
+    </div>
+    <div class="stat-card danger">
+      <div class="stat-label">Heavy Traffic Alerts</div>
+      <div class="stat-value" id="statTraffic">0</div>
+    </div>
+  </section>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Buses</h2>
+          <div class="ph-actions">
+            <span class="panel-hint" id="busCountHint">6 active</span>
+            <button class="btn btn-primary btn-sm" id="addBusBtn">+ Add Bus</button>
+          </div>
+        </div>
+        <div id="busList" class="bus-list"></div>
+      </section>
+
+      <section class="panel alerts-panel">
+        <div class="panel-head">
+          <h2>Alerts</h2>
+          <span class="badge badge-danger" id="alertCount">0</span>
+        </div>
+        <div id="alertList" class="alert-list"></div>
+      </section>
+    </aside>
+
+    <div class="content">
+      <section class="map-card">
+        <div class="route-bar">
+          <span class="route-bar-label">Route:</span>
+          <div class="route-chips" id="routeChips"></div>
+        </div>
+        <div class="map-wrap">
+          <div id="map"></div>
+          <div class="map-note" id="gmapsNote">
+            <span class="map-note-text">Google Maps base map needs a key — set <code>GOOGLE_MAPS_API_KEY</code> in <code>index_g.html</code>. The dashboard still works without it.</span>
+            <button type="button" class="map-note-x" id="gmapsNoteClose" aria-label="Dismiss">×</button>
+          </div>
+          <div class="legend" id="legend">
+            <div class="legend-title">Legend</div>
+            <div class="legend-cols">
+              <div>
+                <div class="legend-sub">Traffic</div>
+                <div class="legend-row"><i class="sw" style="background:#16A34A"></i> Clear</div>
+                <div class="legend-row"><i class="sw" style="background:#F59E0B"></i> Moderate</div>
+                <div class="legend-row"><i class="sw" style="background:#DC2626"></i> Heavy</div>
+              </div>
+              <div>
+                <div class="legend-sub">Bus status</div>
+                <div class="legend-row"><i class="dot" style="background:#16A34A"></i> On Time</div>
+                <div class="legend-row"><i class="dot" style="background:#F59E0B"></i> Delayed</div>
+                <div class="legend-row"><i class="dot" style="background:#2563EB"></i> Arriving</div>
+              </div>
+              <div>
+                <div class="legend-sub">Map</div>
+                <div class="legend-row"><i class="ico">🚌</i> Live bus</div>
+                <div class="legend-row"><i class="dot live-dot"></i> Live device</div>
+                <div class="legend-row"><i class="ico">🏫</i> School</div>
+                <div class="legend-row"><i class="dot stop"></i> Bus stop</div>
+                <div class="legend-row"><i class="dashed"></i> Faster route</div>
+              </div>
+            </div>
+            <button class="legend-toggle" id="legendToggle" title="Hide legend">Hide</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panels">
+        <!-- Bus details -->
+        <div class="panel" id="detailsPanel">
+          <div class="panel-head">
+            <h2>Bus Details</h2>
+            <span class="badge" id="detailsStatusBadge">—</span>
+          </div>
+          <div id="busDetails" class="details-grid"></div>
+          <div class="capacity">
+            <div class="capacity-label">
+              <span>Students on board</span>
+              <span id="capacityText">0 / 0</span>
+            </div>
+            <div class="bar"><div class="bar-fill" id="capacityBar"></div></div>
+          </div>
+        </div>
+
+        <!-- Route / optimization -->
+        <div class="panel" id="routePanel">
+          <div class="panel-head">
+            <h2>Route &amp; Optimization</h2>
+            <span class="panel-hint" id="routeTravelHint">—</span>
+          </div>
+          <div id="routeName" class="route-name">—</div>
+          <div class="route-times">
+            <div class="rt"><span class="rt-label">Planned time</span><span class="rt-value" id="routePlanned">—</span></div>
+            <div class="rt"><span class="rt-label">With traffic</span><span class="rt-value" id="routeTrafficTime">—</span></div>
+            <div class="rt"><span class="rt-label">Next stop ETA</span><span class="rt-value" id="routeNextEta">—</span></div>
+          </div>
+          <div class="stop-strip" id="routeStops"></div>
+          <div class="suggestion" id="suggestionBox" hidden></div>
+        </div>
+
+        <!-- Attendance -->
+        <div class="panel" id="attendancePanel">
+          <div class="panel-head">
+            <h2>Student Attendance</h2>
+            <select id="attBusSelect" class="mini-select" aria-label="Select bus"></select>
+          </div>
+          <div class="att-top">
+            <div class="att-stats">
+              <div class="att-stat present"><span class="n" id="attPresent">0</span><span class="l">Present</span></div>
+              <div class="att-stat absent"><span class="n" id="attAbsent">0</span><span class="l">Absent</span></div>
+              <div class="att-stat expected"><span class="n" id="attExpected">0</span><span class="l">Expected</span></div>
+            </div>
+            <div class="att-chart"><canvas id="attChart"></canvas></div>
+          </div>
+          <div class="roster-tools">
+            <input type="search" id="studentSearch" class="roster-search" placeholder="Search student…" />
+            <select id="statusFilter" class="mini-select" aria-label="Filter status">
+              <option value="all">All statuses</option>
+              <option value="onbus">On Bus</option>
+              <option value="expected">Expected</option>
+              <option value="absent">Absent</option>
+            </select>
+          </div>
+          <div class="roster-wrap">
+            <table class="roster">
+              <thead><tr><th>Student</th><th>Class</th><th>Stop</th><th>Status</th></tr></thead>
+              <tbody id="rosterBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="foot">
+    Stonehill International School · Tarahunise, Bengaluru · Prototype dashboard with simulated data ·
+    Map data © <a href="https://www.google.com/intl/en/help/terms_maps/" target="_blank" rel="noopener">Google</a>
+  </footer>
+
+  <div class="modal-backdrop" id="addBusModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <button class="modal-x" id="modalClose" aria-label="Close">×</button>
+
+      <div id="modalStepForm">
+        <h3 id="modalTitle">Add a live bus</h3>
+        <p class="muted">Pair the driver's phone (iPhone or Android). Apple's Find My doesn't give third-party apps live positions, so the phone reports its own GPS instead — more accurate anyway.</p>
+        <label class="field-label" for="busLabel">Bus label</label>
+        <input id="busLabel" class="roster-search" maxlength="64" placeholder="e.g. Bus 7 · driver phone" />
+        <div class="field-label">Marker colour</div>
+        <div class="swatches" id="swatches"></div>
+        <div class="modal-err" id="modalErr"></div>
+        <button class="btn btn-primary btn-block" id="registerBusBtn">Generate pairing code</button>
+      </div>
+
+      <div id="modalStepDone" hidden>
+        <h3>Pair the device</h3>
+        <p class="muted">These are shown once. Scan the QR below with the iPhone camera (or open the link), then tap <b>Share my location</b>.</p>
+        <div class="pair-code" id="pairCode">·······</div>
+        <div class="pair-qr"><img id="pairQR" alt="Pairing QR code"></div>
+        <p class="muted center">Location is live only while the device page is open and connected over the network.</p>
+        <div class="actions center">
+          <button class="btn btn-ghost" id="copyLinkBtn">Copy link</button>
+          <button class="btn btn-primary" id="doneBtn">Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="google-maps-adapter.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+  <script>
+    /* Google Maps variant — the API key lives ONLY in this file (index_g.html).
+       Replace the GOOGLE_MAPS_API_KEY placeholder in the loader tag below with a real
+       key that has the "Maps JavaScript API" enabled. index.html stays on free Leaflet. */
+    window.gm_authFailure = function () {
+      window.__gmapsFailed = true;
+      var note = document.getElementById('gmapsNote');
+      if (!note) return;
+      note.hidden = false;
+      note.classList.add('err');
+      var t = note.querySelector('.map-note-text');
+      if (t) t.innerHTML = 'Google Maps rejected the API key. Set a valid key at <code>GOOGLE_MAPS_API_KEY</code> in <code>index_g.html</code> (enable the Maps JavaScript API and billing).';
+    };
+    (function () {
+      var note = document.getElementById('gmapsNote');
+      var close = document.getElementById('gmapsNoteClose');
+      if (note && close) close.addEventListener('click', function () { note.hidden = true; });
+      function watch() {
+        if (!note || note.hidden || window.__gmapsFailed) return;
+        if (window.__gmapsReady && window.__gmapsReady()) { note.hidden = true; return; }
+        setTimeout(watch, 500);
+      }
+      setTimeout(watch, 800);
+    })();
+  </script>
+  <script async src="https://maps.googleapis.com/maps/api/js?key=GOOGLE_MAPS_API_KEY&v=weekly&loading=async"></script>
+</body>
+</html>
