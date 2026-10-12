@@ -1,5 +1,5 @@
 /* GET /api/buses — live device list with latest fix, offline flag, ETA to school. */
-const { db, ok, fail, preflight } = require('./_shared');
+const { db, ok, fail, preflight, requireUser, membership } = require('./_shared');
 
 const SCHOOL = { lat: 13.170998, lng: 77.596295 };
 const OFFLINE_AFTER_S = Math.max(3, +(process.env.OFFLINE_AFTER_S || 45));
@@ -48,7 +48,14 @@ exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return preflight();
   if (event.httpMethod !== 'GET') return fail(405, 'Method not allowed');
 
-  const { rows } = await db().query(`
+  const user = await requireUser(event);
+  if (!user) return fail(401, 'Unauthorized');
+
+  const client = db();
+  const mem = await membership(client, user.userId);
+  if (!mem) return ok({ buses: [], noSchool: true });
+
+  const { rows } = await client.query(`
     SELECT d.code, d.label, d.color, d.route_id, d.created_at, d.last_seen,
            (d.last_seen IS NULL OR d.last_seen < now() - interval '${OFFLINE_AFTER_S} seconds') AS offline,
            p.lat, p.lng, p.heading, p.speed, p.accuracy, p.ts AS pos_ts
@@ -56,8 +63,9 @@ exports.handler = async (event) => {
     LEFT JOIN LATERAL (
       SELECT * FROM live_positions WHERE device_code = d.code ORDER BY ts DESC LIMIT 1
     ) p ON true
+    WHERE d.school_id = $1
     ORDER BY d.created_at ASC
-  `);
+  `, [mem.schoolId]);
 
   const buses = [];
   for (const r of rows) {

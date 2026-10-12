@@ -1,12 +1,19 @@
 /* POST /api/assign — assign (or clear) the school route for a live device.
    routeId: a route id string from 1..6 (dashboard ROUTES), or null/"" to clear. */
-const { db, ok, fail, preflight, readBody } = require('./_shared');
+const { db, ok, fail, preflight, readBody, requireUser, membership } = require('./_shared');
 
 const ROUTE_IDS = ['1', '2', '3', '4', '5', '6'];
 
 exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return preflight();
   if (event.httpMethod !== 'POST') return fail(405, 'Method not allowed');
+
+  const user = await requireUser(event);
+  if (!user) return fail(401, 'Unauthorized');
+
+  const client = db();
+  const mem = await membership(client, user.userId);
+  if (!mem) return fail(403, 'No school for this account');
 
   const body = readBody(event);
   if (!body) return fail(400, 'Invalid JSON body');
@@ -18,9 +25,9 @@ exports.handler = async (event) => {
   const routeId = raw === '' ? null : raw;
   if (routeId !== null && !ROUTE_IDS.includes(routeId)) return fail(400, 'routeId must be a valid route id');
 
-  const res = await db().query(
-    'UPDATE live_devices SET route_id = $2 WHERE code = $1',
-    [code, routeId]
+  const res = await client.query(
+    'UPDATE live_devices SET route_id = $2 WHERE code = $1 AND school_id = $3',
+    [code, routeId, mem.schoolId]
   );
   if (res.rowCount === 0) return fail(404, 'Unknown pairing code');
 

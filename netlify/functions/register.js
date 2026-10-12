@@ -1,7 +1,7 @@
 /* POST /api/register — add a new live bus and get a pairing code + device token. */
 const crypto = require('crypto');
 const QRCode = require('qrcode');
-const { db, ok, fail, preflight, readBody } = require('./_shared');
+const { db, ok, fail, preflight, readBody, requireUser, membership } = require('./_shared');
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I
 const CODE_LEN = 6;
@@ -26,6 +26,13 @@ exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return preflight();
   if (event.httpMethod !== 'POST') return fail(405, 'Method not allowed');
 
+  const user = await requireUser(event);
+  if (!user) return fail(401, 'Unauthorized');
+
+  const client = db();
+  const mem = await membership(client, user.userId);
+  if (!mem) return fail(403, 'No school for this account');
+
   const body = readBody(event);
   if (!body) return fail(400, 'Invalid JSON body');
 
@@ -38,15 +45,15 @@ exports.handler = async (event) => {
   let code = uniqueCode();
   // very unlikely collision; retry a few times just in case
   for (let tries = 0; tries < 5; tries++) {
-    const existing = await db().query('SELECT 1 FROM live_devices WHERE code = $1', [code]);
+    const existing = await client.query('SELECT 1 FROM live_devices WHERE code = $1', [code]);
     if (existing.rowCount === 0) break;
     code = uniqueCode();
   }
 
   const token = makeToken();
-  await db().query(
-    'INSERT INTO live_devices(code, token, label, color) VALUES ($1, $2, $3, $4)',
-    [code, token, label, color]
+  await client.query(
+    'INSERT INTO live_devices(code, token, label, color, school_id) VALUES ($1, $2, $3, $4, $5)',
+    [code, token, label, color, mem.schoolId]
   );
 
   const qrPath = `/live.html?c=${code}&t=${token}`;

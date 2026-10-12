@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign in · Smart Bus Dashboard</title>
+  <meta name="description" content="Sign in or create an account for your school's Smart Bus Dashboard." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚌</text></svg>" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="auth-body">
+  <main class="auth-wrap">
+    <div class="auth-card" id="authCard">
+      <div class="auth-brand">
+        <div class="brand-mark">🚌</div>
+        <div>
+          <h1>Smart Bus Dashboard</h1>
+          <p>School transport, live.</p>
+        </div>
+      </div>
+
+      <div class="auth-tabs" role="tablist">
+        <button type="button" class="auth-tab active" id="tabSignIn" role="tab" aria-selected="true">Log in</button>
+        <button type="button" class="auth-tab" id="tabSignUp" role="tab" aria-selected="false">Sign up</button>
+      </div>
+
+      <form class="auth-form" id="signInForm" autocomplete="on">
+        <label>Email<input type="email" id="siEmail" name="email" autocomplete="email" required /></label>
+        <label>Password<input type="password" id="siPassword" name="password" autocomplete="current-password" required /></label>
+        <button type="submit" class="btn btn-primary auth-submit" id="siSubmit">Log in</button>
+      </form>
+
+      <form class="auth-form" id="signUpForm" autocomplete="on" hidden>
+        <label>School name<input type="text" id="suName" name="name" autocomplete="name" required maxlength="120" /></label>
+        <label>Email<input type="email" id="suEmail" name="email" autocomplete="email" required /></label>
+        <label>Password<input type="password" id="suPassword" name="password" autocomplete="new-password" required minlength="8" /></label>
+        <button type="submit" class="btn btn-primary auth-submit" id="suSubmit">Create account</button>
+      </form>
+
+      <form class="auth-form" id="onboardForm" hidden>
+        <p class="auth-note">Almost there — set up your school to see its buses.</p>
+        <label>School name<input type="text" id="obName" name="name" required maxlength="120" /></label>
+        <button type="submit" class="btn btn-primary auth-submit" id="obSubmit">Create school</button>
+      </form>
+
+      <p class="auth-msg" id="authMsg" hidden></p>
+      <p class="auth-foot">By continuing you agree to use this dashboard responsibly.</p>
+    </div>
+  </main>
+
+  <script src="auth-client.js"></script>
+  <script>
+    (function () {
+      const params = new URLSearchParams(location.search);
+      let next = params.get('next') || 'index.html';
+      if (!/^\/(?!\/)/.test(next) && !/^[\w.-]+\.html/.test(next)) next = 'index.html';
+
+      const card = document.getElementById('authCard');
+      const msgEl = document.getElementById('authMsg');
+      const forms = {
+        signIn: document.getElementById('signInForm'),
+        signUp: document.getElementById('signUpForm'),
+        onboard: document.getElementById('onboardForm')
+      };
+
+      function show(which) {
+        Object.values(forms).forEach(f => { f.hidden = true; });
+        forms[which].hidden = false;
+        document.getElementById('tabSignIn').classList.toggle('active', which === 'signIn');
+        document.getElementById('tabSignUp').classList.toggle('active', which === 'signUp');
+        document.querySelector('.auth-tabs').hidden = (which === 'onboard');
+      }
+
+      function say(text, isError) {
+        msgEl.hidden = !text;
+        msgEl.textContent = text || '';
+        msgEl.classList.toggle('err', !!isError);
+      }
+
+      async function afterAuth() {
+        const token = await BusAuth.getToken(true);
+        if (!token) throw new Error('Could not start a session.');
+        const info = await BusAuth.me();
+        if (!info.school) { show('onboard'); return; }
+        location.replace(next);
+      }
+
+      document.getElementById('tabSignIn').addEventListener('click', () => { say(''); show('signIn'); });
+      document.getElementById('tabSignUp').addEventListener('click', () => { say(''); show('signUp'); });
+
+      forms.signIn.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        say('');
+        const btn = document.getElementById('siSubmit');
+        btn.disabled = true;
+        try {
+          await BusAuth.signIn({ email: siEmail.value.trim(), password: siPassword.value });
+          await afterAuth();
+        } catch (err) { say(err.message || 'Could not sign in.', true); btn.disabled = false; }
+      });
+
+      forms.signUp.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        say('');
+        const btn = document.getElementById('suSubmit');
+        btn.disabled = true;
+        try {
+          await BusAuth.signUp({ email: suEmail.value.trim(), password: suPassword.value, name: suName.value.trim() });
+          let token = await BusAuth.getToken(true);
+          if (!token) { await BusAuth.signIn({ email: suEmail.value.trim(), password: suPassword.value }); }
+          await afterAuth();
+        } catch (err) { say(err.message || 'Could not create account.', true); btn.disabled = false; }
+      });
+
+      forms.onboard.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        say('');
+        const btn = document.getElementById('obSubmit');
+        btn.disabled = true;
+        try {
+          await BusAuth.onboard(obName.value.trim());
+          location.replace(next);
+        } catch (err) { say(err.message || 'Could not create school.', true); btn.disabled = false; }
+      });
+
+      // If a session already exists, skip the forms entirely.
+      (async () => {
+        try {
+          const token = await BusAuth.getToken();
+          if (!token) return;
+          const info = await BusAuth.me();
+          if (info.school) { location.replace(next); return; }
+          show('onboard');
+        } catch { /* show the forms */ }
+      })();
+    })();
+  </script>
+</body>
+</html>

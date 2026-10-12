@@ -42,7 +42,8 @@ const HANDLERS = {
   '/api/register': require('../netlify/functions/register.js').handler,
   '/api/report': require('../netlify/functions/report.js').handler,
   '/api/buses': require('../netlify/functions/buses.js').handler,
-  '/api/assign': require('../netlify/functions/assign.js').handler
+  '/api/assign': require('../netlify/functions/assign.js').handler,
+  '/api/me': require('../netlify/functions/me.js').handler
 };
 
 const server = http.createServer(async (req, res) => {
@@ -56,6 +57,7 @@ const server = http.createServer(async (req, res) => {
     const event = {
       httpMethod: req.method,
       body: body || null,
+      headers: req.headers,
       queryStringParameters: Object.fromEntries(u.searchParams)
     };
     try {
@@ -85,5 +87,5 @@ const server = http.createServer(async (req, res) => {
 const PORT = +(process.env.PORT || 4174);
 server.listen(PORT, () => {
   console.log('Smart Bus Dashboard dev server: http://localhost:' + PORT);
-  console.log('API mounted at /api/register, /api/report, /api/buses, /api/assign');
+  console.log('API mounted at /api/register, /api/report, /api/buses, /api/assign, /api/me');
 });

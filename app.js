@@ -49,6 +49,13 @@ const API_BASE = window.API_BASE || '';
 const LIVE_POLL_MS = 2000;
 const SWATCH_COLORS = ['#2563EB', '#0F766E', '#7C3AED', '#BE185D', '#B45309', '#047857', '#DB2777', '#334155'];
 
+/* All /api/* calls go through the auth client when present (adds the bearer
+   token and refreshes it on 401). Falls back to plain fetch otherwise. */
+function busFetch(path, opts) {
+  if (window.BusAuth && window.BusAuth.apiFetch) return window.BusAuth.apiFetch(path, opts);
+  return fetch(API_BASE + path, opts);
+}
+
 const addBusBtnEl = document.getElementById('addBusBtn');
 const modalEl = document.getElementById('addBusModal');
 const modalCloseEl = document.getElementById('modalClose');
@@ -1180,7 +1187,7 @@ function upsertLiveMarker(code, lb) {
 async function pollLiveBuses() {
   let data;
   try {
-    const res = await fetch(API_BASE + '/api/buses', { cache: 'no-store' });
+    const res = await busFetch('/api/buses', { cache: 'no-store' });
     if (!res.ok) return;
     data = await res.json();
   } catch (e) { return; }
@@ -1280,7 +1287,7 @@ async function assignLiveRoute(code, routeId) {
   if (cur) cur.route_id = routeId || null; // optimistic update while the API round-trips
   let applied = false;
   try {
-    const res = await fetch(API_BASE + '/api/assign', {
+    const res = await busFetch('/api/assign', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code, routeId: routeId || null })
@@ -1343,7 +1350,7 @@ async function handleRegister() {
   if (modalErrEl) modalErrEl.textContent = '';
   registerBusBtn.disabled = true;
   try {
-    const res = await fetch(API_BASE + '/api/register', {
+    const res = await busFetch('/api/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ label, color: SWATCH_COLORS[swatchSel] })
@@ -1426,8 +1433,18 @@ function init() {
   }, TICK_MS);
 }
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', init);
+function start() {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+}
+
+/* Wait for the auth gate before starting; it redirects to auth.html when there
+   is no session, so init() only runs for an authenticated viewer. */
+if (window.BusAuth && window.BusAuth.ready) {
+  window.BusAuth.ready.then(info => { if (info) start(); });
 } else {
-  init();
+  start();
 }
