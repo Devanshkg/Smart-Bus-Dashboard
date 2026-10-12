@@ -97,22 +97,55 @@
     return res.json();
   }
 
-  async function onboard(name) {
+  async function onboard(name, googleMapsApiKey) {
     const res = await apiFetch('/api/me', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name })
+      body: JSON.stringify({ name, googleMapsApiKey })
     });
     const data = await readJson(res);
     if (!res.ok) throw new Error(errFrom(data, 'Could not create school.'));
     return data;
   }
 
+  /* Update the caller's school name + Google Maps API key (settings). */
+  async function updateSchool({ name, googleMapsApiKey }) {
+    const res = await apiFetch('/api/me', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, googleMapsApiKey })
+    });
+    const data = await readJson(res);
+    if (!res.ok) throw new Error(errFrom(data, 'Could not save settings.'));
+    return data;
+  }
+
+  /* ---- Google Maps loader ------------------------------------------------ */
+
+  let gmapsLoad = null;
+
+  /* Inject the Maps JavaScript API once, using the school's key. */
+  function loadGoogleMaps(key) {
+    if (window.google && window.google.maps) return Promise.resolve(true);
+    if (gmapsLoad) return gmapsLoad;
+    if (!key) return Promise.resolve(false);
+    gmapsLoad = new Promise((resolve) => {
+      const s = document.createElement('script');
+      s.src = 'https://maps.googleapis.com/maps/api/js?key=' +
+        encodeURIComponent(key) + '&v=weekly&loading=async';
+      s.async = true;
+      s.onload = () => resolve(true);
+      s.onerror = () => resolve(false);
+      document.head.appendChild(s);
+    });
+    return gmapsLoad;
+  }
+
   /* ---- Page gate (dashboard pages only) --------------------------------- */
 
-  function authRedirect() {
+  function authRedirect(extra) {
     const next = encodeURIComponent(location.pathname + location.search);
-    location.replace(AUTH_PAGE + '?next=' + next);
+    location.replace(AUTH_PAGE + '?next=' + next + (extra ? '&' + extra : ''));
   }
 
   function reveal() {
@@ -130,6 +163,7 @@
         if (!token) { authRedirect(); return null; }
         const info = await me();
         if (!info || !info.school) { authRedirect(); return null; }
+        if (!info.school.googleMapsApiKey) { authRedirect('setup=key'); return null; }
         renderAccountMenu(info);
         reveal();
         return info;
@@ -148,6 +182,7 @@
     el.innerHTML =
       '<span class="acct-school" title="' + escapeAttr(name) + '">' + escapeHtml(name) + '</span>' +
       (role ? '<span class="acct-role">' + escapeHtml(role) + '</span>' : '') +
+      '<a class="acct-settings" href="settings.html">School settings</a>' +
       '<button type="button" class="btn btn-sm acct-signout" id="acctSignOut">Sign out</button>';
     el.hidden = false;
     const btn = document.getElementById('acctSignOut');
@@ -169,7 +204,8 @@
   function escapeAttr(s) { return escapeHtml(s); }
 
   const BusAuth = {
-    signUp, signIn, signOut, getToken, apiFetch, me, onboard,
+    signUp, signIn, signOut, getToken, apiFetch, me, onboard, updateSchool,
+    loadGoogleMaps,
     get ready() { return ready; }
   };
   window.BusAuth = BusAuth;

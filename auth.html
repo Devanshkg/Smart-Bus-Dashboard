@@ -38,8 +38,10 @@
       </form>
 
       <form class="auth-form" id="onboardForm" hidden>
-        <p class="auth-note">Almost there — set up your school to see its buses.</p>
+        <p class="auth-note" id="onboardNote">Almost there — set up your school to see its buses.</p>
         <label>School name<input type="text" id="obName" name="name" required maxlength="120" /></label>
+        <label>Google Maps API key<input type="text" id="obKey" name="googleMapsApiKey" required maxlength="128" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="AIza…" /></label>
+        <p class="auth-hint">Enable the <b>Maps JavaScript API</b> and restrict the key to this site in Google Cloud.</p>
         <button type="submit" class="btn btn-primary auth-submit" id="obSubmit">Create school</button>
       </form>
 
@@ -55,6 +57,7 @@
       let next = params.get('next') || 'index.html';
       if (!/^\/(?!\/)/.test(next) && !/^[\w.-]+\.html/.test(next)) next = 'index.html';
 
+      let setupMode = params.get('setup') === 'key';
       const card = document.getElementById('authCard');
       const msgEl = document.getElementById('authMsg');
       const forms = {
@@ -77,11 +80,22 @@
         msgEl.classList.toggle('err', !!isError);
       }
 
+      /* A school without a Google Maps key must add one before the dashboard. */
+      function setupKey(school) {
+        setupMode = true;
+        if (school && school.name) document.getElementById('obName').value = school.name;
+        document.getElementById('onboardNote').textContent =
+          'Add your Google Maps API key to continue.';
+        document.getElementById('obSubmit').textContent = 'Save key';
+        show('onboard');
+      }
+
       async function afterAuth() {
         const token = await BusAuth.getToken(true);
         if (!token) throw new Error('Could not start a session.');
         const info = await BusAuth.me();
         if (!info.school) { show('onboard'); return; }
+        if (!info.school.googleMapsApiKey) { setupKey(info.school); return; }
         location.replace(next);
       }
 
@@ -118,9 +132,15 @@
         const btn = document.getElementById('obSubmit');
         btn.disabled = true;
         try {
-          await BusAuth.onboard(obName.value.trim());
+          const name = obName.value.trim();
+          const key = obKey.value.trim();
+          if (setupMode) {
+            await BusAuth.updateSchool({ name, googleMapsApiKey: key });
+          } else {
+            await BusAuth.onboard(name, key);
+          }
           location.replace(next);
-        } catch (err) { say(err.message || 'Could not create school.', true); btn.disabled = false; }
+        } catch (err) { say(err.message || 'Could not save.', true); btn.disabled = false; }
       });
 
       // If a session already exists, skip the forms entirely.
@@ -129,8 +149,9 @@
           const token = await BusAuth.getToken();
           if (!token) return;
           const info = await BusAuth.me();
-          if (info.school) { location.replace(next); return; }
-          show('onboard');
+          if (!info.school) { show('onboard'); return; }
+          if (!info.school.googleMapsApiKey) { setupKey(info.school); return; }
+          location.replace(next);
         } catch { /* show the forms */ }
       })();
     })();

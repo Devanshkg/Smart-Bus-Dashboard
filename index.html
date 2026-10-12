@@ -6,7 +6,6 @@
   <title>Stonehill Smart Bus Dashboard</title>
   <meta name="description" content="Live school transportation dashboard for Stonehill International School — buses, routes, traffic, ETAs and student attendance." />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚌</text></svg>" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body data-require-auth>
@@ -79,6 +78,10 @@
         </div>
         <div class="map-wrap">
           <div id="map"></div>
+          <div class="map-note" id="gmapsNote" hidden>
+            <span class="map-note-text">Google Maps could not load.</span>
+            <button type="button" class="map-note-x" id="gmapsNoteClose" aria-label="Dismiss">×</button>
+          </div>
           <div class="legend" id="legend">
             <div class="legend-title">Legend</div>
             <div class="legend-cols">
@@ -209,10 +212,36 @@
     </div>
   </div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="google-maps-adapter.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="auth-client.js"></script>
   <script src="data.js"></script>
   <script src="app.js"></script>
+  <script>
+    /* Google Maps only. The school's API key comes from BusAuth (per-school).
+       The auth gate redirects to auth.html when there is no session or key, so
+       this page only runs with a key available. */
+    window.gm_authFailure = function () {
+      window.__gmapsFailed = true;
+      var note = document.getElementById('gmapsNote');
+      if (!note) return;
+      note.hidden = false;
+      note.classList.add('err');
+      var t = note.querySelector('.map-note-text');
+      if (t) t.textContent = 'Google Maps rejected the API key. Update it in School settings.';
+    };
+    (function () {
+      var note = document.getElementById('gmapsNote');
+      var close = document.getElementById('gmapsNoteClose');
+      if (note && close) close.addEventListener('click', function () { note.hidden = true; });
+      if (window.BusAuth && window.BusAuth.ready) {
+        window.BusAuth.ready.then(function (info) {
+          if (info && info.school && info.school.googleMapsApiKey) {
+            window.BusAuth.loadGoogleMaps(info.school.googleMapsApiKey);
+          }
+        });
+      }
+    })();
+  </script>
 </body>
 </html>

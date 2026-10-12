@@ -2,7 +2,7 @@
   "dependencies": {
     "@neon/config": "^1.8.6",
     "@neon/env": "^1.5.3",
-    "jose": "^6.2.12",
+    "jose": "^4.15.9",
     "pg": "^8.23.1",
     "qrcode": "^1.5.4"
   },

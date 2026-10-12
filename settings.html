@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>School settings · Smart Bus Dashboard</title>
+  <meta name="description" content="Update your school's name and Google Maps API key." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚌</text></svg>" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="auth-body" data-require-auth>
+  <main class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-brand">
+        <div class="brand-mark">🚌</div>
+        <div>
+          <h1>School settings</h1>
+          <p>Update your school details.</p>
+        </div>
+      </div>
+
+      <form class="auth-form" id="settingsForm">
+        <label>School name<input type="text" id="setName" name="name" required maxlength="120" /></label>
+        <label>Google Maps API key<input type="text" id="setKey" name="googleMapsApiKey" required maxlength="128" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="AIza…" /></label>
+        <p class="auth-hint">Enable the <b>Maps JavaScript API</b> and restrict the key to this site in Google Cloud.</p>
+        <button type="submit" class="btn btn-primary auth-submit" id="setSubmit">Save changes</button>
+      </form>
+
+      <p class="auth-msg" id="settingsMsg" hidden></p>
+      <p class="auth-foot"><a href="index.html">← Back to dashboard</a></p>
+    </div>
+  </main>
+
+  <script src="auth-client.js"></script>
+  <script>
+    (function () {
+      const msg = document.getElementById('settingsMsg');
+      const form = document.getElementById('settingsForm');
+      const nameEl = document.getElementById('setName');
+      const keyEl = document.getElementById('setKey');
+      const btn = document.getElementById('setSubmit');
+
+      function say(text, isError) {
+        msg.hidden = !text;
+        msg.textContent = text || '';
+        msg.classList.toggle('err', !!isError);
+      }
+
+      // Prefill once the auth gate resolves with the current school.
+      (BusAuth.ready || Promise.resolve(null)).then((info) => {
+        if (info && info.school) {
+          nameEl.value = info.school.name || '';
+          keyEl.value = info.school.googleMapsApiKey || '';
+        }
+      });
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        say('');
+        btn.disabled = true;
+        try {
+          await BusAuth.updateSchool({
+            name: nameEl.value.trim(),
+            googleMapsApiKey: keyEl.value.trim()
+          });
+          say('Saved.');
+          btn.disabled = false;
+        } catch (err) {
+          say(err.message || 'Could not save settings.', true);
+          btn.disabled = false;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

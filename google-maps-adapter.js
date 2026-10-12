@@ -7,13 +7,13 @@
  * whole dashboard (routes, stops, buses, live devices, popups, tooltips)
  * renders on Google Maps with no change to the application logic.
  *
- * index_g.html loads this file plus the Google Maps JS API; that page holds the
- * GOOGLE_MAPS_API_KEY placeholder. If the API is missing or the key is rejected
- * the adapter degrades to a no-op (every layer call is dropped), so the rest of
- * the dashboard still works and index_g.html shows a notice over the map area.
- * Remove that notice on click once the key is set.
+ * index.html loads this file plus the Google Maps JS API. The API key is the
+ * per-school key stored in the DB; auth-client.js injects the loader with it
+ * (BusAuth.loadGoogleMaps). If the API is missing or the key is rejected the
+ * adapter degrades to a no-op (every layer call is dropped), so the rest of the
+ * dashboard still works and index.html shows a notice over the map area.
  *
- * This file intentionally does NOT contain the API key — only index_g.html does.
+ * This file intentionally does NOT contain the API key.
  */
 (function () {
   'use strict';
