@@ -1,6 +1,6 @@
 # Plan — Compulsory per-school Google Maps API key
 
-Status: **planned** (not yet implemented)
+Status: **done** (implemented, deployed, and verified)
 Depends on: `docs/plan_auth.md` (school accounts & per-school isolation)
 
 ## Goal
@@ -125,6 +125,12 @@ enforced by the application. No default and no seed value.
   - Confirm the key is never written to logs.
 - Rebuild/redeploy via the Netlify CLI (draft -> verify -> promote), as in the prior
   auth deployment.
+
+Result: migration applied; `node --check` clean; API E2E passed (missing/invalid/valid
+key, update persistence, keyless gate, cross-school data isolation); production
+deploy verified. Key scoping is enforced by `membership()` filtering on the caller's
+`user_id`. Live map render still needs a real Google key from the school; the
+`gm_authFailure` invalid-key path is wired.
 
 ## Out of scope / known risks
 
